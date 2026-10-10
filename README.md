@@ -12,7 +12,7 @@
 
 Aplicación web para reservar alojamientos entre huéspedes y anfitriones. Backend en **Spring Boot 3.3.5** con **arquitectura hexagonal pragmática** y **DDD aplicado**; frontend vanilla JavaScript con **ES Modules** y CSS modular con **BEM + tokens**. Persistencia en **MySQL 8** versionada con **Flyway**. Autenticación **stateless** con **JWT** (access + refresh) y contraseñas hasheadas con **BCrypt**.
 
-> ℹ️ **Estado del repositorio:** activo · **Versión:** `v1.0` · **Licencia:** GPLv3
+> ℹ️ **Estado del repositorio:** activo · **Versión:** `v1.1` · **Licencia:** GPLv3
 
 ---
 
@@ -20,12 +20,13 @@ Aplicación web para reservar alojamientos entre huéspedes y anfitriones. Backe
 
 - **Arquitectura hexagonal pragmática** — dependencias apuntan siempre hacia el dominio.
 - **DDD aplicado** — entidades ricas, Value Objects y agregados con invariantes.
-- **Autenticación JWT stateless** — access 15 min + refresh 7 días con rotación.
+- **Autenticación JWT stateless** — access 15 min + refresh 7 días. Sin rotación real en v1 (ver ADR-003).
 - **Contraseñas con BCrypt** — hash + salt automático, sin texto plano en BD.
 - **Bloqueo tras 5 intentos fallidos** — protección contra fuerza bruta.
 - **Validación en tres capas** — Bean Validation en DTOs, invariantes en entidades, lógica en servicios.
 - **Manejo global de errores** — un `GlobalExceptionHandler` centralizado devuelve `ErrorResponse` uniforme.
 - **Comisión del 15%** — cálculo automático al crear cada reserva, con liquidación al anfitrión.
+- **Instant booking con pasarela simulada** — el huésped paga y la reserva se confirma automáticamente. Rechazo simulable con `referencia = "FAIL-*"`.
 - **Migraciones Flyway** — esquema versionado, sin `ddl-auto=update` en producción.
 - **Logs correlacionados por `requestId`** — MDC + `OncePerRequestFilter` + aspecto `@Around`.
 - **Frontend sin frameworks** — ES Modules nativos, CSS con tokens y BEM, cero CDN.
@@ -170,14 +171,15 @@ $ curl http://localhost:8080/api/propiedades?pagina=0&tamanio=10
 | **Autenticación** | Registro, login, refresh, become-host | ✅ Completo |
 | **Catálogo público** | Búsqueda con filtros y paginación | ✅ Completo |
 | **Propiedades** | CRUD, imágenes, servicios, publicación | ✅ Completo |
-| **Habitaciones** | CRUD, disponibilidad, bloqueos de fechas | ✅ Backend completo |
-| **Reservas** | Crear, confirmar, cancelar, historial de estados | ✅ Backend completo |
-| **Pagos** | Registro simulado, aprobación, rechazo | ✅ Backend completo |
+| **Habitaciones** | CRUD de habitaciones | ✅ Backend completo |
+| **Disponibilidad** | Consulta de unidades disponibles por rango | ✅ Backend completo |
+| **Bloqueos de fecha** | Anfitrión bloquea fechas sin reserva | ✅ Backend completo |
+| **Reservas** | Crear, cancelar, completar, historial de estados | ✅ Backend completo |
+| **Pagos** | Instant booking con pasarela simulada (aprobación/rechazo automático) | ✅ Backend completo |
 | **Liquidaciones** | Generación automática al completar reserva | ✅ Backend completo |
 | **Reviews** | Crear, editar (30 días), responder, rating denormalizado | ✅ Backend completo |
 | **Favoritos** | Wishlist por usuario | ✅ Backend completo |
 | **Notificaciones** | In-app, disparadas por eventos del dominio | ✅ Backend completo |
-| **Bloqueos de fecha** | Anfitrión bloquea fechas sin reserva | ✅ Backend completo |
 
 > ℹ️ Los módulos marcados con "Backend completo" tienen API REST funcional pero su integración en el frontend está en curso.
 
@@ -313,8 +315,6 @@ erDiagram
 ```text
 MundoTerrazaAPP/
 ├── docs/                              # Documentación del proyecto
-│   ├── referencia/
-│   │   └── mundo_terraza_db.sql       # Esquema SQL de referencia
 │   ├── scripts/
 │   │   └── smoke-test.sh              # Smoke test end-to-end
 │   ├── api.md
@@ -460,6 +460,7 @@ mvn test -X
 | **BEM + tokens en CSS** | Sin frameworks; sistema de diseño propio y consistente |
 | **ES Modules nativos** | Sin bundler en dev; migrable a Vite sin cambiar código |
 | **Sin Lombok en VOs** | Los VOs exponen lógica; se escriben a mano para control total |
+| **Instant booking** | El huésped paga y la reserva se confirma automáticamente; un solo camino a `CONFIRMADA`. Pasarela simulada con prefijo `FAIL-` para pruebas end-to-end. |
 
 ---
 
@@ -512,10 +513,12 @@ mvn test -X
 
 ## 🗺️ Roadmap
 
+> ℹ️ El backend está consolidado y con 147 tests en verde. La deuda principal está en el frontend: reservas, pagos, reviews y favoritos aún no están integrados en la UI.
+
 - [x] Backend completo con arquitectura hexagonal pragmática.
 - [x] Autenticación JWT + BCrypt + bloqueo por intentos.
 - [x] Modelo de dominio con Value Objects e invariantes.
-- [x] API REST con 60+ endpoints documentados con OpenAPI.
+- [x] API REST con 54 endpoints documentados con OpenAPI.
 - [x] Migraciones Flyway + seeders.
 - [x] 147 tests unitarios con JUnit 5 + Mockito.
 - [x] Frontend refactorizado con CSS modular + ES Modules.

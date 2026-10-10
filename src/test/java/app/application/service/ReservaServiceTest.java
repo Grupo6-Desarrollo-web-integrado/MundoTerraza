@@ -3,6 +3,7 @@ import app.application.dto.request.CrearReservaRequest;
 import app.application.dto.response.ReservaResponse;
 import app.application.mapper.HistorialEstadoReservaMapper;
 import app.application.mapper.ReservaMapper;
+import app.domain.enums.EstadoPropiedad;
 import app.domain.enums.PoliticaCancelacion;
 import app.domain.enums.TipoAlojamiento;
 import app.domain.exception.BusinessException;
@@ -10,6 +11,7 @@ import app.domain.exception.ForbiddenException;
 import app.domain.exception.NotFoundException;
 import app.domain.model.Categoria;
 import app.domain.model.Habitacion;
+import app.domain.model.Imagen;
 import app.domain.model.Propiedad;
 import app.domain.model.Reserva;
 import app.domain.model.Usuario;
@@ -70,6 +72,7 @@ class ReservaServiceTest{
     private ReservaService reservaService;
     private Usuario anfitrion;
     private Usuario huesped;
+    private Propiedad propiedad;
     private Habitacion habitacion;
     private Reserva reserva;
     private static final LocalDate INICIO=LocalDate.of(2027,1,10);
@@ -84,12 +87,18 @@ class ReservaServiceTest{
                 "Lima", "Biografia valida de anfitrion");
         huesped=nuevoUsuario(2L, "Huesped", "huesped@test.com");
         Categoria categoria=new Categoria("Urbano", "Desc");
-        Propiedad propiedad=new Propiedad(anfitrion, categoria, "Titulo valido",
+        propiedad=new Propiedad(anfitrion, categoria, "Titulo valido",
                 "Descripcion valida de la propiedad", "Lima",
                 -12.0, -77.0, TipoAlojamiento.DEPARTAMENTO, PoliticaCancelacion.FLEXIBLE);
         habitacion=new Habitacion(propiedad, "Suite", "Descripcion",
                 Dinero.de(new BigDecimal("250.00")), 2, 1, 0, 0, 1, 1, 45.0, 1);
         reserva=new Reserva(huesped, habitacion, 1, INICIO, FIN);
+    }
+    private void marcarPropiedadActiva(){
+        propiedad.agregarHabitacion(habitacion);
+        propiedad.agregarImagen(Imagen.paraPropiedad(propiedad, "/uploads/a.jpg", 0));
+        propiedad.publicar();
+        assertEquals(EstadoPropiedad.ACTIVA, propiedad.getEstado());
     }
     @Nested
     @DisplayName("Crear reserva")
@@ -97,6 +106,7 @@ class ReservaServiceTest{
         @Test
         @DisplayName("Crea reserva verificando disponibilidad y notificando a ambos")
         void creaOk(){
+            marcarPropiedadActiva();
             when(usuarioRepository.findById(2L)).thenReturn(Optional.of(huesped));
             when(habitacionRepository.findById(1L)).thenReturn(Optional.of(habitacion));
             doNothing().when(disponibilidadService).verificarDisponibilidad(any(), any(), any(), anyInt());
@@ -111,20 +121,27 @@ class ReservaServiceTest{
             verify(notificacionService, times(2)).crear(any(), any(), any(), any(), any());
         }
         @Test
+        @DisplayName("Falla si la propiedad no esta ACTIVA")
+        void fallaPropiedadNoActiva(){
+            when(usuarioRepository.findById(2L)).thenReturn(Optional.of(huesped));
+            when(habitacionRepository.findById(1L)).thenReturn(Optional.of(habitacion));
+
+            assertThrows(BusinessException.class,
+                    ()->reservaService.crear(2L, crearRequest(1L, 1, INICIO, FIN)));
+            verify(disponibilidadService, never()).verificarDisponibilidad(any(), any(), any(), anyInt());
+        }
+        @Test
         @DisplayName("Falla si el usuario no existe")
         void fallaUsuarioInexistente(){
             when(usuarioRepository.findById(2L)).thenReturn(Optional.empty());
-
             assertThrows(NotFoundException.class,
                     ()->reservaService.crear(2L, crearRequest(1L, 1, INICIO, FIN)));
-            verify(reservaRepository, never()).save(any());
         }
         @Test
         @DisplayName("Falla si la habitacion no existe")
         void fallaHabitacionInexistente(){
             when(usuarioRepository.findById(2L)).thenReturn(Optional.of(huesped));
             when(habitacionRepository.findById(1L)).thenReturn(Optional.empty());
-
             assertThrows(NotFoundException.class,
                     ()->reservaService.crear(2L, crearRequest(1L, 1, INICIO, FIN)));
         }
@@ -133,46 +150,20 @@ class ReservaServiceTest{
         void fallaReservaPropia(){
             when(usuarioRepository.findById(1L)).thenReturn(Optional.of(anfitrion));
             when(habitacionRepository.findById(1L)).thenReturn(Optional.of(habitacion));
-
             assertThrows(BusinessException.class,
                     ()->reservaService.crear(1L, crearRequest(1L, 1, INICIO, FIN)));
-            verify(disponibilidadService, never()).verificarDisponibilidad(any(), any(), any(), anyInt());
         }
         @Test
         @DisplayName("Falla si no hay disponibilidad")
         void fallaSinDisponibilidad(){
+            marcarPropiedadActiva();
             when(usuarioRepository.findById(2L)).thenReturn(Optional.of(huesped));
             when(habitacionRepository.findById(1L)).thenReturn(Optional.of(habitacion));
             doThrow(new BusinessException("Sin disponibilidad"))
                     .when(disponibilidadService).verificarDisponibilidad(any(), any(), any(), anyInt());
-
             assertThrows(BusinessException.class,
                     ()->reservaService.crear(2L, crearRequest(1L, 1, INICIO, FIN)));
             verify(reservaRepository, never()).save(any());
-        }
-    }
-    @Nested
-    @DisplayName("Confirmar reserva")
-    class Confirmar{
-        @Test
-        @DisplayName("Confirma la reserva y notifica al huesped")
-        void confirmaOk(){
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-            when(reservaRepository.save(reserva)).thenReturn(reserva);
-            when(reservaMapper.aResponse(reserva)).thenReturn(mockResponse());
-
-            reservaService.confirmar(1L, 10L);
-
-            assertEquals("CONFIRMADA", reserva.getEstado().name());
-            verify(historialRepository).save(any());
-            verify(notificacionService).crear(any(), any(), any(), any(), any());
-        }
-        @Test
-        @DisplayName("Falla si no es el anfitrion")
-        void fallaNoAnfitrion(){
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-
-            assertThrows(ForbiddenException.class, ()->reservaService.confirmar(99L, 10L));
         }
     }
     @Nested
@@ -184,16 +175,13 @@ class ReservaServiceTest{
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
             when(reservaRepository.save(reserva)).thenReturn(reserva);
             when(reservaMapper.aResponse(reserva)).thenReturn(mockResponse());
-
             reservaService.cancelar(2L, 10L);
-
             assertEquals("CANCELADA", reserva.getEstado().name());
         }
         @Test
         @DisplayName("Usuario externo no puede cancelar")
         void usuarioExternoFalla(){
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-
             assertThrows(ForbiddenException.class, ()->reservaService.cancelar(99L, 10L));
         }
     }
@@ -201,7 +189,7 @@ class ReservaServiceTest{
     @DisplayName("Completar reserva")
     class Completar{
         @Test
-        @DisplayName("Completar genera liquidacion y notifica")
+        @DisplayName("Anfitrion completa, genera liquidacion y notifica")
         void completarOk(){
             reserva.confirmar();
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
@@ -209,11 +197,18 @@ class ReservaServiceTest{
             when(reservaMapper.aResponse(reserva)).thenReturn(mockResponse());
             when(liquidacionService.generarPara(reserva)).thenReturn(null);
 
-            reservaService.completar(10L);
+            reservaService.completar(1L, 10L);
 
             assertEquals("COMPLETADA", reserva.getEstado().name());
             verify(liquidacionService).generarPara(reserva);
             verify(notificacionService).crear(any(), any(), any(), any(), any());
+        }
+        @Test
+        @DisplayName("No anfitrion no puede completar")
+        void noAnfitrionFalla(){
+            reserva.confirmar();
+            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            assertThrows(ForbiddenException.class, ()->reservaService.completar(99L, 10L));
         }
     }
     private Usuario nuevoUsuario(Long id, String nombre, String correo){

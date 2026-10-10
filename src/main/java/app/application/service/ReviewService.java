@@ -18,6 +18,8 @@ import app.infrastructure.repository.PropiedadRepository;
 import app.infrastructure.repository.ReservaRepository;
 import app.infrastructure.repository.ReviewRepository;
 import app.infrastructure.repository.UsuarioRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -27,6 +29,7 @@ import java.util.List;
  */
 @Service
 public class ReviewService{
+    private static final Logger log=LoggerFactory.getLogger(ReviewService.class);
     private final ReviewRepository reviewRepository;
     private final PropiedadRepository propiedadRepository;
     private final UsuarioRepository usuarioRepository;
@@ -71,6 +74,8 @@ public class ReviewService{
                 "Nueva resena",
                 "Recibiste una resena en "+propiedad.getTitulo(),
                 review.getId());
+        log.info("Review creada id={} usuarioId={} propiedadId={} rating={}",
+                review.getId(), usuarioId, propiedad.getId(), review.getRating());
         return reviewMapper.aResponse(review);
     }
     @Transactional
@@ -93,6 +98,7 @@ public class ReviewService{
         review.eliminar();
         reviewRepository.save(review);
         recalcularRatingPropiedad(review.getPropiedad());
+        log.info("Review eliminada id={} usuarioId={}", reviewId, usuarioId);
     }
     @Transactional
     public ReviewResponse responder(Long usuarioId, Long reviewId, ResponderReviewRequest request){
@@ -106,6 +112,7 @@ public class ReviewService{
                 "Respuesta a tu resena",
                 "El anfitrion respondio tu resena en "+review.getPropiedad().getTitulo(),
                 review.getId());
+        log.info("Review respondida id={} anfitrionId={}", reviewId, usuarioId);
         return reviewMapper.aResponse(review);
     }
     private void recalcularRatingPropiedad(Propiedad propiedad){

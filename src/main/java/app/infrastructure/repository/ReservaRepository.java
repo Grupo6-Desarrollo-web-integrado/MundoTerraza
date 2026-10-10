@@ -15,9 +15,9 @@ import java.util.List;
  */
 @Repository
 public interface ReservaRepository extends JpaRepository<Reserva, Long>{
-    @EntityGraph(attributePaths={"habitacion", "propiedad", "propiedad.anfitrion"})
+    @EntityGraph(attributePaths={"usuario", "habitacion", "propiedad", "propiedad.anfitrion"})
     List<Reserva> findByUsuarioIdOrderByFechaCreacionDesc(Long usuarioId);
-    @EntityGraph(attributePaths={"usuario", "habitacion", "propiedad"})
+    @EntityGraph(attributePaths={"usuario", "habitacion", "propiedad", "propiedad.anfitrion"})
     List<Reserva> findByPropiedadAnfitrionIdOrderByFechaCreacionDesc(Long anfitrionId);
     boolean existsByUsuarioIdAndPropiedadIdAndEstado(Long usuarioId, Long propiedadId, EstadoReserva estado);
     @Query("""

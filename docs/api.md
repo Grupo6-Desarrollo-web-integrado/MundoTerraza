@@ -15,7 +15,8 @@
 2. [Autenticación](#-autenticación)
 3. [Códigos HTTP](#-códigos-http)
 4. [Formato de errores](#-formato-de-errores)
-5. [Endpoints](#-endpoints)
+5. [Modelo de reserva: instant booking](#-modelo-de-reserva-instant-booking)
+6. [Endpoints](#-endpoints)
    - [Auth](#auth)
    - [Usuarios](#usuarios)
    - [Catálogo](#catálogo)
@@ -29,7 +30,7 @@
    - [Favoritos](#favoritos)
    - [Notificaciones](#notificaciones)
    - [Liquidaciones](#liquidaciones)
-6. [Ejemplo de flujo completo](#-ejemplo-de-flujo-completo)
+7. [Ejemplo de flujo completo](#-ejemplo-de-flujo-completo)
 
 ---
 
@@ -130,6 +131,44 @@ Todas las excepciones se traducen a un `ErrorResponse` uniforme:
   }
 }
 ```
+
+---
+
+## 🎯 Modelo de reserva: instant booking
+
+MundoTerraza implementa **instant booking**: el huésped reserva y paga en un solo paso. La pasarela de pago (simulada en v1) aprueba o rechaza el pago, y al aprobar confirma automáticamente la reserva.
+
+### Flujo
+
+```
+1. Huésped → POST /api/reservas            → Reserva PENDIENTE
+2. Huésped → POST /api/pagos               → Sistema simula pasarela:
+                                                ├─ APROBADO  → Pago APROBADO
+                                                │              Reserva CONFIRMADA
+                                                │              Historial registrado
+                                                │              Notif al huésped y al anfitrión
+                                                └─ RECHAZADO → Pago RECHAZADO
+                                                               Reserva sigue PENDIENTE
+                                                               Notif al huésped
+                                                               (puede reintentar POST /api/pagos)
+3. (Futuro) Anfitrión → PUT /api/reservas/{id}/completar
+                                            → Reserva COMPLETADA
+                                            → Liquidación generada
+```
+
+### Simulación de pasarela
+
+El endpoint `POST /api/pagos` simula la respuesta de la pasarela según la `referencia` enviada:
+
+| Referencia | Resultado simulado |
+|------------|--------------------|
+| `null` o vacía | **APROBADO** |
+| `"OK-001"`, `"REF-123"`, cualquier referencia que **no** empiece con `FAIL-` | **APROBADO** |
+| `"FAIL-001"`, `"fail-002"`, cualquier `FAIL-*` | **RECHAZADO** |
+
+**Reintento:** si existe un pago en estado `RECHAZADO` para esa reserva, el huésped puede volver a llamar `POST /api/pagos` con una nueva referencia. El pago se reutiliza y se vuelve a simular.
+
+**Bloqueo:** si ya existe un pago en estado `APROBADO`, el request devuelve `400`.
 
 ---
 
@@ -529,7 +568,7 @@ DELETE /api/propiedades/{id}
 Authorization: Bearer <accessToken>
 ```
 
-**Autenticado + Dueño** · Hard delete si no tiene historial. Soft delete (`ELIMINADA`) si tiene reservas o reviews.
+**Autenticado + Dueño** · Hard delete si no tiene historial. Soft delete (`ELIMINADA`) si tiene reservas o reviews, y sus habitaciones pasan a `INACTIVA`.
 
 **Response `204`** sin body.
 
@@ -544,8 +583,13 @@ Authorization: Bearer <accessToken>
 
 **Autenticado + Dueño** · Cambia estado a `ACTIVA`.
 
+**Reglas:**
+- Debe tener al menos 1 habitación.
+- Debe tener al menos 1 imagen.
+- Debe tener al menos 1 habitación en estado `DISPONIBLE`.
+
 **Errores:**
-- `409` — la propiedad no tiene habitaciones o no tiene imágenes.
+- `409` — no cumple los requisitos.
 
 ---
 
@@ -740,6 +784,8 @@ POST /api/habitaciones/{id}/bloqueos
 Authorization: Bearer <accessToken>
 ```
 
+**Autenticado + Dueño de la habitación** · Bloquea un rango de fechas.
+
 **Request:**
 ```json
 {
@@ -751,6 +797,9 @@ Authorization: Bearer <accessToken>
 ```
 
 **Response `201`:** `BloqueoFechaResponse`.
+
+**Errores:**
+- `400` — ya existe un bloqueo en ese rango, o existen reservas activas en ese rango.
 
 ---
 
@@ -809,7 +858,7 @@ Authorization: Bearer <accessToken>
 ```
 
 **Errores:**
-- `400` — reservar la propia propiedad, sin disponibilidad.
+- `400` — reservar la propia propiedad, propiedad no `ACTIVA`, sin disponibilidad.
 
 ---
 
@@ -846,14 +895,18 @@ Accesible solo al huésped o al anfitrión.
 
 ---
 
-#### Confirmar reserva
+#### Completar reserva
 
 ```http
-PUT /api/reservas/{id}/confirmar
+PUT /api/reservas/{id}/completar
 Authorization: Bearer <accessToken>
 ```
 
-**Anfitrión únicamente**.
+**Anfitrión únicamente**. Cambia la reserva a `COMPLETADA` y genera automáticamente la liquidación correspondiente.
+
+**Errores:**
+- `403` — no es el anfitrión de la reserva.
+- `409` — la reserva no está en estado `CONFIRMADA`.
 
 ---
 
@@ -887,7 +940,7 @@ Authorization: Bearer <accessToken>
 
 ### Pagos
 
-#### Registrar pago
+#### Registrar pago (instant booking)
 
 ```http
 POST /api/pagos
@@ -899,31 +952,22 @@ Authorization: Bearer <accessToken>
 {
   "reservaId": 1,
   "tipoPago": "TARJETA",
-  "referencia": "TEST-001"
+  "referencia": "OK-001"
 }
 ```
 
-**Response `201`:** `PagoResponse` con estado `PENDIENTE`.
+**Response `201`:** `PagoResponse` con estado `APROBADO` o `RECHAZADO` según la simulación.
 
----
+**Comportamiento:**
+- Si `referencia` empieza con `FAIL-` → `Pago RECHAZADO`, reserva sigue `PENDIENTE`.
+- Cualquier otra referencia (o `null`) → `Pago APROBADO`, reserva pasa a `CONFIRMADA`.
+- Si existe pago previo `RECHAZADO`, se reutiliza y se vuelve a simular.
+- Si existe pago previo `APROBADO`, devuelve `400`.
 
-#### Aprobar pago
-
-```http
-PUT /api/pagos/{id}/aprobar
-Authorization: Bearer <accessToken>
-```
-
-Al aprobar, la reserva pasa a `CONFIRMADA` y se emiten notificaciones.
-
----
-
-#### Rechazar pago
-
-```http
-PUT /api/pagos/{id}/rechazar
-Authorization: Bearer <accessToken>
-```
+**Errores:**
+- `400` — reserva no `PENDIENTE`, ya tiene pago aprobado.
+- `403` — la reserva no te pertenece.
+- `404` — reserva no encontrada.
 
 ---
 
@@ -933,6 +977,14 @@ Authorization: Bearer <accessToken>
 GET /api/pagos/reserva/{reservaId}
 Authorization: Bearer <accessToken>
 ```
+
+Accesible solo al huésped o al anfitrión de la reserva.
+
+**Response `200`:** `PagoResponse`.
+
+**Errores:**
+- `403` — no sos huésped ni anfitrión de esa reserva.
+- `404` — reserva no encontrada o sin pago registrado.
 
 ---
 
@@ -1164,7 +1216,7 @@ Authorization: Bearer <accessToken>
 
 ## 🔄 Ejemplo de flujo completo
 
-Registrar → convertirse en anfitrión → publicar propiedad → crear habitación → subir imagen → publicar → reservar como otro usuario → pagar → confirmar.
+Registrar → convertirse en anfitrión → publicar propiedad → crear habitación → subir imagen → publicar → reservar como otro usuario → pagar → completar → reseñar.
 
 ```bash
 BASE=http://localhost:8080/api
@@ -1216,16 +1268,25 @@ RES=$(curl -s -X POST $BASE/reservas \
   -d "{\"habitacionId\":$HAB_ID,\"cantidad\":1,\"fechaInicio\":\"2027-01-10\",\"fechaFin\":\"2027-01-15\"}")
 RES_ID=$(echo "$RES" | grep -oP '"id":\K[0-9]+' | head -1)
 
-# 8. Registrar y aprobar pago
-PAGO=$(curl -s -X POST $BASE/pagos \
+# 8. Pagar (instant booking — pasarela simulada aprueba)
+curl -s -X POST $BASE/pagos \
   -H "Authorization: Bearer $HUE_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"reservaId\":$RES_ID,\"tipoPago\":\"TARJETA\"}")
-PAGO_ID=$(echo "$PAGO" | grep -oP '"id":\K[0-9]+' | head -1)
-
-curl -s -X PUT $BASE/pagos/$PAGO_ID/aprobar \
-  -H "Authorization: Bearer $HUE_TOKEN"
+  -d "{\"reservaId\":$RES_ID,\"tipoPago\":\"TARJETA\",\"referencia\":\"OK-001\"}"
 
 # La reserva ahora está CONFIRMADA
 curl -s $BASE/reservas/$RES_ID -H "Authorization: Bearer $HUE_TOKEN"
+
+# 9. Anfitrión completa la reserva (genera liquidación)
+curl -s -X PUT $BASE/reservas/$RES_ID/completar \
+  -H "Authorization: Bearer $ANF_TOKEN"
+
+# 10. Huésped deja review
+curl -s -X POST $BASE/reviews \
+  -H "Authorization: Bearer $HUE_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"propiedadId\":$PROP_ID,\"rating\":5,\"comentario\":\"Excelente experiencia, muy recomendado.\"}"
+
+# 11. Anfitrión consulta sus liquidaciones
+curl -s $BASE/liquidaciones -H "Authorization: Bearer $ANF_TOKEN"
 ```

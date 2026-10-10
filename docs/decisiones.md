@@ -25,6 +25,7 @@
 | [ADR-013](#adr-013--bloqueo-de-cuenta-tras-5-intentos-fallidos) | Bloqueo de cuenta tras 5 intentos fallidos | ✅ Aceptada |
 | [ADR-014](#adr-014--sin-verificación-de-email-en-v1) | Sin verificación de email en v1 | ✅ Aceptada |
 | [ADR-015](#adr-015--sin-roles-admin-y-agente) | Sin roles ADMIN y AGENTE | ✅ Aceptada |
+| [ADR-016](#adr-016--instant-booking-con-pasarela-simulada) | Instant booking con pasarela simulada | ✅ Aceptada |
 
 ---
 
@@ -128,7 +129,9 @@ Opciones:
 
 ### Decisión
 
-Se adopta **JWT con access token (15 min) y refresh token (7 días)**. El access vive en `sessionStorage`, el refresh en `localStorage`. Rotación en cada refresh.
+Se adopta **JWT con access token (15 min) y refresh token (7 días)**. El access vive en `sessionStorage`, el refresh en `localStorage`.
+
+En v1, el endpoint `POST /api/auth/refresh` **emite un nuevo par de tokens pero no invalida el refresh anterior**. No hay blacklist ni rotación real. Es coherente con el enfoque stateless sin estado compartido: si más adelante se necesita rotación, se añadirá una tabla de refresh tokens revocados o un cache distribuido.
 
 ### Consecuencias
 
@@ -144,6 +147,7 @@ Se adopta **JWT con access token (15 min) y refresh token (7 días)**. El access
 - No se puede invalidar un access token antes de que expire.
 - Requiere lógica de refresh transparente en el frontend.
 - Si alguien roba el refresh, el daño dura hasta su expiración.
+- Sin rotación real, un refresh robado sigue siendo válido hasta su expiración natural (7 días).
 
 ### Alternativas consideradas
 
@@ -457,7 +461,7 @@ Se adopta un **modelo híbrido**:
 
 | Entidad | Estrategia |
 |---------|------------|
-| `Propiedad` con reservas/reviews | Soft delete (`ELIMINADA`) |
+| `Propiedad` con reservas/reviews | Soft delete (`ELIMINADA`) + habitaciones → `INACTIVA` |
 | `Propiedad` sin historial | Hard delete |
 | `Usuario` | Soft delete + anonimización |
 | `Review` | Soft delete (`ELIMINADA`) |
@@ -472,6 +476,7 @@ Se adopta un **modelo híbrido**:
 - Integridad referencial garantizada.
 - Historial auditable.
 - Reversible en algunos casos.
+- Al hacer soft delete de una Propiedad, sus Habitaciones pasan a `INACTIVA`, evitando que sigan reservándose por error.
 
 **Negativas:**
 
@@ -657,11 +662,85 @@ Añadir `ADMIN` y `AGENTE` implicaría:
 
 ---
 
+## ADR-016 — Instant booking con pasarela simulada
+
+**Fecha:** 2026-10-10
+**Estado:** ✅ Aceptada
+
+### Contexto
+
+El flujo de reserva original (v3.0) planteaba tres pasos explícitos:
+
+1. Huésped crea la reserva (`PENDIENTE`).
+2. Huésped registra el pago (`PENDIENTE`).
+3. Huésped aprueba el pago (`APROBADO`) → la reserva pasa a `CONFIRMADA`.
+
+Además, existía un endpoint paralelo `PUT /api/reservas/{id}/confirmar` que permitía al anfitrión confirmar una reserva **sin pago**.
+
+Esto generaba tres problemas:
+
+- **Duplicidad de caminos a `CONFIRMADA`**: uno por pago y otro manual por el anfitrión.
+- **Roles inconsistentes**: el huésped "aprobaba" su propio pago, un rol que en una pasarela real ejecutaría un sistema externo.
+- **Estado atrapado**: si un pago era rechazado, la reserva quedaba en `PENDIENTE` con un pago `RECHAZADO` y no había forma de reintentar.
+
+Además, como el método `ReservaService.completar()` no tenía endpoint, ninguna reserva llegaba a `COMPLETADA` en runtime, lo cual bloqueaba los flujos de liquidación y reviews.
+
+### Decisión
+
+Se adopta **instant booking** con **pasarela simulada**:
+
+- **Un solo endpoint público:** `POST /api/pagos`.
+- **Un solo camino a `CONFIRMADA`:** la aprobación del pago.
+- **Se elimina** `PUT /api/reservas/{id}/confirmar`.
+- **Se eliminan** `PUT /api/pagos/{id}/aprobar` y `PUT /api/pagos/{id}/rechazar`.
+- **Se añade** `PUT /api/reservas/{id}/completar` (solo anfitrión) para cerrar el ciclo.
+
+**Simulación de pasarela:** el endpoint `POST /api/pagos` decide la respuesta según el campo `referencia`:
+
+- Si empieza con `FAIL-` (case-insensitive) → pago `RECHAZADO`. La reserva sigue `PENDIENTE`.
+- Cualquier otra referencia (o `null`) → pago `APROBADO`. La reserva pasa a `CONFIRMADA` automáticamente.
+
+**Reintento:** si existe un pago `RECHAZADO` previo, se reutiliza la instancia y se vuelve a simular. Si ya existe un pago `APROBADO`, el request devuelve `400`.
+
+**Disparadores del ciclo de vida:**
+
+```
+PENDIENTE   → al crear la reserva
+CONFIRMADA  → al aprobar el pago (automático)
+COMPLETADA  → al completar la reserva (acción del anfitrión)
+CANCELADA   → al cancelar la reserva (huésped o anfitrión)
+```
+
+### Consecuencias
+
+**Positivas:**
+
+- Un solo flujo de confirmación, sin caminos paralelos.
+- El rol del huésped es coherente: paga, no "aprueba".
+- Los flujos de liquidación y reviews quedan alcanzables en runtime.
+- Los tests end-to-end pueden simular rechazo con `referencia = "FAIL-001"`, sin pasarela real.
+- El frontend solo necesita un endpoint para completar la reserva.
+
+**Negativas:**
+
+- Se pierde el modelo "request-to-book" (aprobación del anfitrión antes del pago). Si el negocio lo requiere en v2, se añadirá un estado `PENDIENTE_APROBACION` y un endpoint adicional.
+- El nombre del método `simularPasarela()` en `PagoService` expone que es un stub. Es intencional: cuando se integre una pasarela real, se reemplaza su cuerpo sin tocar el resto del flujo.
+- El prefijo `FAIL-` es una convención ad-hoc. Documentada en `docs/api.md`.
+- El prefijo `FAIL-` se decidió por simplicidad: se documenta en `docs/api.md` y en la tabla "Modelo de reserva: instant booking". Alternativas como un campo booleano `simularFallo` en el DTO se descartaron por añadir ruido al contrato HTTP.
+
+### Alternativas consideradas
+
+1. **Request-to-Book con aprobación previa del anfitrión.** Descartada: introducía un estado extra `PENDIENTE_APROBACION`, un endpoint nuevo (`PUT /api/reservas/{id}/aceptar`) y ~5–7 horas de refactorización. Además, con pasarela simulada, la aprobación del anfitrión no aporta valor funcional (no hay "hold" real sobre la tarjeta).
+2. **Mantener el flujo original con tres pasos.** Descartada: perpetuaba los tres problemas de contexto (duplicidad, roles inconsistentes, estado atrapado).
+3. **Mantener `aprobar`/`rechazar` como endpoints manuales para la demo.** Descartada: el huésped no debería "aprobar" su propio pago, ni siquiera para la demo. La simulación con `FAIL-` cumple el mismo objetivo didáctico sin la ambigüedad de roles.
+
+---
+
 ## 📝 Convenciones para futuros ADRs
 
 Al añadir un nuevo ADR:
 
-1. **Numeración secuencial** — `ADR-016`, `ADR-017`, etc.
+1. **Numeración secuencial** — `ADR-017`, `ADR-018`, etc.
 2. **No se editan los ADRs existentes** — si una decisión cambia, se crea uno nuevo que **supersede** al anterior.
 3. **Secciones obligatorias:**
    - Fecha

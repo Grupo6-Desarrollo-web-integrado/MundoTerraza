@@ -27,10 +27,9 @@ public class ReconciliacionRatingJob{
     @Scheduled(cron="0 30 3 * * *")
     @Transactional
     public void reconciliar(){
-        List<Propiedad> propiedades=propiedadRepository.findAll();
+        List<Propiedad> propiedades=propiedadRepository.findAllByEstadoNot(EstadoPropiedad.ELIMINADA);
         int actualizadas=0;
         for(Propiedad p:propiedades){
-            if(p.getEstado()==EstadoPropiedad.ELIMINADA)continue;
             Double promedio=reviewRepository.promedioRating(p.getId(), EstadoReview.ACTIVA);
             long total=reviewRepository.countByPropiedadIdAndEstado(p.getId(), EstadoReview.ACTIVA);
             double nuevo=promedio==null?0.0:promedio;

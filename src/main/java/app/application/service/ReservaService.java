@@ -4,6 +4,7 @@ import app.application.dto.response.HistorialEstadoReservaResponse;
 import app.application.dto.response.ReservaResponse;
 import app.application.mapper.HistorialEstadoReservaMapper;
 import app.application.mapper.ReservaMapper;
+import app.domain.enums.EstadoPropiedad;
 import app.domain.enums.EstadoReserva;
 import app.domain.enums.TipoNotificacion;
 import app.domain.exception.BusinessException;
@@ -17,6 +18,8 @@ import app.infrastructure.repository.HabitacionRepository;
 import app.infrastructure.repository.HistorialEstadoReservaRepository;
 import app.infrastructure.repository.ReservaRepository;
 import app.infrastructure.repository.UsuarioRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -26,6 +29,7 @@ import java.util.List;
  */
 @Service
 public class ReservaService{
+    private static final Logger log=LoggerFactory.getLogger(ReservaService.class);
     private final ReservaRepository reservaRepository;
     private final UsuarioRepository usuarioRepository;
     private final HabitacionRepository habitacionRepository;
@@ -62,6 +66,8 @@ public class ReservaService{
                 .orElseThrow(()->new NotFoundException("Habitacion no encontrada"));
         if(habitacion.getPropiedad().getAnfitrion().getId().equals(usuarioId))
             throw new BusinessException("No puedes reservar tu propia propiedad");
+        if(habitacion.getPropiedad().getEstado()!=EstadoPropiedad.ACTIVA)
+            throw new BusinessException("La propiedad no esta activa");
         disponibilidadService.verificarDisponibilidad(habitacion, request.getFechaInicio(),
                 request.getFechaFin(), request.getCantidad());
         Reserva reserva=new Reserva(usuario, habitacion, request.getCantidad(),
@@ -77,23 +83,8 @@ public class ReservaService{
                 "Nueva reserva recibida",
                 "Recibiste una nueva reserva en "+habitacion.getPropiedad().getTitulo(),
                 reserva.getId());
-        return reservaMapper.aResponse(reserva);
-    }
-    @Transactional
-    public ReservaResponse confirmar(Long usuarioId, Long reservaId){
-        Reserva reserva=reservaRepository.buscarConRelaciones(reservaId);
-        if(reserva==null)
-            throw new NotFoundException("Reserva no encontrada");
-        if(!reserva.getPropiedad().getAnfitrion().getId().equals(usuarioId))
-            throw new ForbiddenException("No eres el anfitrion de esta reserva");
-        EstadoReserva anterior=reserva.getEstado();
-        reserva.confirmar();
-        reservaRepository.save(reserva);
-        registrarHistorial(reserva, anterior, EstadoReserva.CONFIRMADA, "Reserva confirmada");
-        notificacionService.crear(reserva.getUsuario(), TipoNotificacion.RESERVA_CONFIRMADA,
-                "Reserva confirmada",
-                "Tu reserva en "+reserva.getPropiedad().getTitulo()+" fue confirmada",
-                reserva.getId());
+        log.info("Reserva creada id={} usuarioId={} habitacionId={}",
+                reserva.getId(), usuarioId, habitacion.getId());
         return reservaMapper.aResponse(reserva);
     }
     @Transactional
@@ -115,13 +106,17 @@ public class ReservaService{
                 "Reserva cancelada",
                 "La reserva en "+reserva.getPropiedad().getTitulo()+" fue cancelada",
                 reserva.getId());
+        log.info("Reserva cancelada id={} por usuarioId={}",
+                reserva.getId(), usuarioId);
         return reservaMapper.aResponse(reserva);
     }
     @Transactional
-    public ReservaResponse completar(Long reservaId){
+    public ReservaResponse completar(Long usuarioId, Long reservaId){
         Reserva reserva=reservaRepository.buscarConRelaciones(reservaId);
         if(reserva==null)
             throw new NotFoundException("Reserva no encontrada");
+        if(!reserva.getPropiedad().getAnfitrion().getId().equals(usuarioId))
+            throw new ForbiddenException("Solo el anfitrion puede completar esta reserva");
         EstadoReserva anterior=reserva.getEstado();
         reserva.completar();
         reservaRepository.save(reserva);
@@ -131,6 +126,8 @@ public class ReservaService{
                 "Reserva completada",
                 "Tu estadia en "+reserva.getPropiedad().getTitulo()+" ha finalizado",
                 reserva.getId());
+        log.info("Reserva completada id={} anfitrionId={}",
+                reserva.getId(), usuarioId);
         return reservaMapper.aResponse(reserva);
     }
     @Transactional(readOnly=true)

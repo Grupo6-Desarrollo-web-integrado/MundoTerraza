@@ -46,15 +46,15 @@ public class ReservaController{
                                                    @PathVariable Long id){
         return ResponseEntity.ok(reservaService.obtener(user.getId(), id));
     }
-    @PutMapping("/{id}/confirmar")
-    public ResponseEntity<ReservaResponse> confirmar(@AuthenticationPrincipal CustomUserDetails user,
-                                                     @PathVariable Long id){
-        return ResponseEntity.ok(reservaService.confirmar(user.getId(), id));
-    }
     @PutMapping("/{id}/cancelar")
     public ResponseEntity<ReservaResponse> cancelar(@AuthenticationPrincipal CustomUserDetails user,
                                                     @PathVariable Long id){
         return ResponseEntity.ok(reservaService.cancelar(user.getId(), id));
+    }
+    @PutMapping("/{id}/completar")
+    public ResponseEntity<ReservaResponse> completar(@AuthenticationPrincipal CustomUserDetails user,
+                                                     @PathVariable Long id){
+        return ResponseEntity.ok(reservaService.completar(user.getId(), id));
     }
     @GetMapping("/{id}/historial")
     public ResponseEntity<List<HistorialEstadoReservaResponse>> historial(

@@ -47,7 +47,6 @@ public class GlobalExceptionHandler{
     }
     @ExceptionHandler(InvalidCredentialsException.class)
     public ResponseEntity<ErrorResponse> credenciales(InvalidCredentialsException e, HttpServletRequest request){
-        log.warn("Login fallido: {}", e.getMessage());
         return construir(HttpStatus.UNAUTHORIZED, e.getMessage(), request, null);
     }
     @ExceptionHandler(AccountLockedException.class)
@@ -85,15 +84,12 @@ public class GlobalExceptionHandler{
     public ResponseEntity<ErrorResponse> estadoIlegal(IllegalStateException e, HttpServletRequest request){
         return construir(HttpStatus.CONFLICT, e.getMessage(), request, null);
     }
-
-
     @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
     public ResponseEntity<ErrorResponse> recursoNoEncontrado(
         org.springframework.web.servlet.resource.NoResourceFoundException e,
         HttpServletRequest request){
         return construir(HttpStatus.NOT_FOUND, "Recurso no encontrado", request, null);
     }
-
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> generico(Exception e, HttpServletRequest request){
         log.error("Error no controlado en {}", request.getRequestURI(), e);

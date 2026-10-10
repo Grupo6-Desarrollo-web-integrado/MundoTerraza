@@ -44,7 +44,7 @@ import static org.mockito.Mockito.when;
  * @author inici4rsesi0n
  */
 @ExtendWith(MockitoExtension.class)
-@DisplayName("PagoService - Orquestacion")
+@DisplayName("PagoService - Orquestacion instant booking")
 class PagoServiceTest{
     @Mock
     private PagoRepository pagoRepository;
@@ -58,7 +58,6 @@ class PagoServiceTest{
     private PagoMapper pagoMapper;
     private PagoService pagoService;
     private Reserva reserva;
-    private Pago pago;
     @BeforeEach
     void setup(){
         pagoService=new PagoService(pagoRepository, reservaRepository,
@@ -78,49 +77,110 @@ class PagoServiceTest{
         reserva=new Reserva(huesped, habitacion, 1,
                 LocalDate.of(2027,1,10), LocalDate.of(2027,1,15));
         reserva.setId(1L);
-        pago=new Pago(reserva, app.domain.enums.TipoPago.TARJETA, "REF-001");
-        pago.setId(1L);
     }
     @Nested
-    @DisplayName("Registrar pago")
-    class Registrar{
+    @DisplayName("Registrar pago con pasarela simulada OK")
+    class RegistrarOk{
         @Test
-        @DisplayName("Registra pago en reserva PENDIENTE")
-        void registraOk(){
+        @DisplayName("Pago aprobado confirma reserva y notifica")
+        void pagoAprobadoConfirma(){
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
             when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.empty());
             when(pagoRepository.save(any(Pago.class))).thenAnswer(i->i.getArgument(0));
-            when(pagoMapper.aResponse(any(Pago.class))).thenReturn(mockResponse());
+            when(reservaRepository.save(reserva)).thenReturn(reserva);
+            when(pagoMapper.aResponse(any(Pago.class))).thenReturn(mockResponse("APROBADO"));
 
             CrearPagoRequest req=new CrearPagoRequest();
             req.setReservaId(1L);
             req.setTipoPago("TARJETA");
-            req.setReferencia("REF-001");
+            req.setReferencia("OK-001");
 
             PagoResponse resp=pagoService.registrar(2L, req);
-            assertEquals("PENDIENTE", resp.estado());
-            verify(pagoRepository).save(any(Pago.class));
+
+            assertEquals("APROBADO", resp.estado());
+            assertEquals(EstadoReserva.CONFIRMADA, reserva.getEstado());
+            verify(historialRepository).save(any());
         }
+        @Test
+        @DisplayName("Sin referencia tambien aprueba")
+        void sinReferenciaAprueba(){
+            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.empty());
+            when(pagoRepository.save(any(Pago.class))).thenAnswer(i->i.getArgument(0));
+            when(reservaRepository.save(reserva)).thenReturn(reserva);
+            when(pagoMapper.aResponse(any(Pago.class))).thenReturn(mockResponse("APROBADO"));
+
+            CrearPagoRequest req=new CrearPagoRequest();
+            req.setReservaId(1L);
+            req.setTipoPago("TARJETA");
+
+            pagoService.registrar(2L, req);
+            assertEquals(EstadoReserva.CONFIRMADA, reserva.getEstado());
+        }
+    }
+    @Nested
+    @DisplayName("Registrar pago con pasarela simulada KO")
+    class RegistrarKo{
+        @Test
+        @DisplayName("Referencia FAIL- rechaza pago y reserva queda PENDIENTE")
+        void referenciaFailRechaza(){
+            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.empty());
+            when(pagoRepository.save(any(Pago.class))).thenAnswer(i->i.getArgument(0));
+            when(pagoMapper.aResponse(any(Pago.class))).thenReturn(mockResponse("RECHAZADO"));
+
+            CrearPagoRequest req=new CrearPagoRequest();
+            req.setReservaId(1L);
+            req.setTipoPago("TARJETA");
+            req.setReferencia("FAIL-001");
+
+            PagoResponse resp=pagoService.registrar(2L, req);
+
+            assertEquals("RECHAZADO", resp.estado());
+            assertEquals(EstadoReserva.PENDIENTE, reserva.getEstado());
+            verify(historialRepository, never()).save(any());
+        }
+        @Test
+        @DisplayName("Reintento tras rechazo funciona")
+        void reintentoTrasRechazo(){
+            Pago pagoPrevio=new Pago(reserva, app.domain.enums.TipoPago.TARJETA, "FAIL-001");
+            pagoPrevio.rechazar();
+            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.of(pagoPrevio));
+            when(pagoRepository.save(any(Pago.class))).thenAnswer(i->i.getArgument(0));
+            when(reservaRepository.save(reserva)).thenReturn(reserva);
+            when(pagoMapper.aResponse(any(Pago.class))).thenReturn(mockResponse("APROBADO"));
+
+            CrearPagoRequest req=new CrearPagoRequest();
+            req.setReservaId(1L);
+            req.setTipoPago("TARJETA");
+            req.setReferencia("OK-002");
+
+            pagoService.registrar(2L, req);
+
+            assertEquals(EstadoPago.APROBADO, pagoPrevio.getEstado());
+            assertEquals(EstadoReserva.CONFIRMADA, reserva.getEstado());
+        }
+    }
+    @Nested
+    @DisplayName("Validaciones")
+    class Validaciones{
         @Test
         @DisplayName("Falla si la reserva no existe")
         void fallaReservaNoExiste(){
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(null);
-
             CrearPagoRequest req=new CrearPagoRequest();
             req.setReservaId(99L);
             req.setTipoPago("TARJETA");
-
             assertThrows(NotFoundException.class, ()->pagoService.registrar(2L, req));
         }
         @Test
         @DisplayName("Falla si la reserva no pertenece al usuario")
         void fallaReservaAjena(){
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-
             CrearPagoRequest req=new CrearPagoRequest();
             req.setReservaId(1L);
             req.setTipoPago("TARJETA");
-
             assertThrows(ForbiddenException.class, ()->pagoService.registrar(99L, req));
         }
         @Test
@@ -128,79 +188,27 @@ class PagoServiceTest{
         void fallaReservaNoPendiente(){
             reserva.confirmar();
             when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            CrearPagoRequest req=new CrearPagoRequest();
+            req.setReservaId(1L);
+            req.setTipoPago("TARJETA");
+            assertThrows(BusinessException.class, ()->pagoService.registrar(2L, req));
+        }
+        @Test
+        @DisplayName("Falla si ya existe pago APROBADO")
+        void fallaPagoAprobado(){
+            Pago pagoAprobado=new Pago(reserva, app.domain.enums.TipoPago.TARJETA, "OK-001");
+            pagoAprobado.aprobar();
+            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
+            when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.of(pagoAprobado));
 
             CrearPagoRequest req=new CrearPagoRequest();
             req.setReservaId(1L);
             req.setTipoPago("TARJETA");
-
             assertThrows(BusinessException.class, ()->pagoService.registrar(2L, req));
         }
-        @Test
-        @DisplayName("Falla si la reserva ya tiene pago")
-        void fallaPagoDuplicado(){
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-            when(pagoRepository.findByReservaId(anyLong())).thenReturn(Optional.of(pago));
-
-            CrearPagoRequest req=new CrearPagoRequest();
-            req.setReservaId(1L);
-            req.setTipoPago("TARJETA");
-
-            assertThrows(BusinessException.class, ()->pagoService.registrar(2L, req));
-            verify(pagoRepository, never()).save(any());
-        }
     }
-    @Nested
-    @DisplayName("Aprobar pago")
-    class Aprobar{
-        @Test
-        @DisplayName("Aprobar pago PENDIENTE confirma la reserva")
-        void aprobarConfirma(){
-            when(pagoRepository.findById(anyLong())).thenReturn(Optional.of(pago));
-            when(pagoRepository.save(pago)).thenReturn(pago);
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-            when(reservaRepository.save(reserva)).thenReturn(reserva);
-            when(pagoMapper.aResponse(pago)).thenReturn(mockResponse());
-
-            pagoService.aprobar(2L, 1L);
-
-            assertEquals(EstadoPago.APROBADO, pago.getEstado());
-            assertEquals(EstadoReserva.CONFIRMADA, reserva.getEstado());
-            verify(historialRepository).save(any());
-        }
-        @Test
-        @DisplayName("Aprobar pago de reserva ya confirmada no vuelve a confirmar")
-        void aprobarReservaYaConfirmada(){
-            reserva.confirmar();
-            when(pagoRepository.findById(anyLong())).thenReturn(Optional.of(pago));
-            when(pagoRepository.save(pago)).thenReturn(pago);
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-            when(pagoMapper.aResponse(pago)).thenReturn(mockResponse());
-
-            pagoService.aprobar(2L, 1L);
-
-            verify(reservaRepository, never()).save(any());
-            verify(historialRepository, never()).save(any());
-        }
-    }
-    @Nested
-    @DisplayName("Rechazar pago")
-    class Rechazar{
-        @Test
-        @DisplayName("Rechazar cambia estado y notifica")
-        void rechazarOk(){
-            when(pagoRepository.findById(anyLong())).thenReturn(Optional.of(pago));
-            when(pagoRepository.save(pago)).thenReturn(pago);
-            when(reservaRepository.buscarConRelaciones(anyLong())).thenReturn(reserva);
-            when(pagoMapper.aResponse(pago)).thenReturn(mockResponse());
-
-            pagoService.rechazar(2L, 1L);
-
-            assertEquals(EstadoPago.RECHAZADO, pago.getEstado());
-            verify(notificacionService).crear(any(), any(), any(), any(), any());
-        }
-    }
-    private PagoResponse mockResponse(){
+    private PagoResponse mockResponse(String estado){
         return new PagoResponse(1L, 1L, new BigDecimal("1250.00"),
-                "TARJETA", "PENDIENTE", "REF-001", null);
+                "TARJETA", estado, "REF-001", null);
     }
 }

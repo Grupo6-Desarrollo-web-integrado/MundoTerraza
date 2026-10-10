@@ -14,5 +14,4 @@ public interface HabitacionRepository extends JpaRepository<Habitacion, Long>{
     @EntityGraph(attributePaths={"imagenes"})
     List<Habitacion> findByPropiedadId(Long propiedadId);
     List<Habitacion> findByPropiedadIdAndEstadoNot(Long propiedadId, EstadoHabitacion estado);
-    boolean existsByPropiedadIdAndEstadoNot(Long propiedadId, EstadoHabitacion estado);
 }

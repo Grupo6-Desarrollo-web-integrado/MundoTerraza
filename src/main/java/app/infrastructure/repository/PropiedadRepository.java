@@ -1,8 +1,6 @@
 package app.infrastructure.repository;
 import app.domain.enums.EstadoPropiedad;
 import app.domain.model.Propiedad;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
@@ -22,10 +20,5 @@ public interface PropiedadRepository extends JpaRepository<Propiedad, Long>,
     @Query("select p from Propiedad p where p.id=:id and p.estado<>:excluido")
     Optional<Propiedad> buscarPorIdConRelaciones(@Param("id") Long id,
                                                  @Param("excluido") EstadoPropiedad excluido);
-    @EntityGraph(attributePaths={"anfitrion", "categoria", "imagenes"})
-    Page<Propiedad> findByEstadoNot(EstadoPropiedad estado, Pageable pageable);
-    List<Propiedad> findByAnfitrionIdAndEstadoNot(Long anfitrionId, EstadoPropiedad estado);
-    boolean existsByAnfitrionIdAndEstadoNot(Long anfitrionId, EstadoPropiedad estado);
-    boolean existsByCategoriaIdAndEstadoNot(Long categoriaId, EstadoPropiedad estado);
-    long countByEstadoNot(EstadoPropiedad estado);
+    List<Propiedad> findAllByEstadoNot(EstadoPropiedad estado);
 }

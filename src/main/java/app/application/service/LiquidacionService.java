@@ -8,6 +8,8 @@ import app.domain.exception.NotFoundException;
 import app.domain.model.Liquidacion;
 import app.domain.model.Reserva;
 import app.infrastructure.repository.LiquidacionRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.List;
  */
 @Service
 public class LiquidacionService{
+    private static final Logger log=LoggerFactory.getLogger(LiquidacionService.class);
     private final LiquidacionRepository liquidacionRepository;
     private final LiquidacionMapper liquidacionMapper;
     public LiquidacionService(LiquidacionRepository liquidacionRepository,
@@ -29,7 +32,11 @@ public class LiquidacionService{
         if(liquidacionRepository.findByReservaId(reserva.getId()).isPresent())
             throw new BusinessException("La reserva ya tiene una liquidacion generada");
         Liquidacion liquidacion=new Liquidacion(reserva);
-        return liquidacionRepository.save(liquidacion);
+        Liquidacion guardada=liquidacionRepository.save(liquidacion);
+        log.info("Liquidacion generada id={} reservaId={} anfitrionId={} montoNeto={}",
+                guardada.getId(), reserva.getId(), guardada.getAnfitrion().getId(),
+                guardada.getMontoNeto().getMonto());
+        return guardada;
     }
     @Transactional(readOnly=true)
     public List<LiquidacionResponse> listarDelAnfitrion(Long anfitrionId){

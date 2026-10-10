@@ -1,4 +1,5 @@
 package app.domain.model;
+import app.domain.enums.EstadoHabitacion;
 import app.domain.enums.EstadoPropiedad;
 import app.domain.enums.PoliticaCancelacion;
 import app.domain.enums.TipoAlojamiento;
@@ -138,6 +139,10 @@ public class Propiedad{
             throw new IllegalStateException("La propiedad debe tener al menos una habitacion");
         if(this.imagenes.isEmpty())
             throw new IllegalStateException("La propiedad debe tener al menos una imagen");
+        boolean hayDisponible=this.habitaciones.stream()
+                .anyMatch(h->h.getEstado()==EstadoHabitacion.DISPONIBLE);
+        if(!hayDisponible)
+            throw new IllegalStateException("La propiedad debe tener al menos una habitacion DISPONIBLE");
         this.estado=EstadoPropiedad.ACTIVA;
     }
     public void desactivar(){

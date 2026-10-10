@@ -15,5 +15,4 @@ public interface FavoritoRepository extends JpaRepository<Favorito, Long>{
     List<Favorito> findByUsuarioIdOrderByFechaDesc(Long usuarioId);
     Optional<Favorito> findByUsuarioIdAndPropiedadId(Long usuarioId, Long propiedadId);
     boolean existsByUsuarioIdAndPropiedadId(Long usuarioId, Long propiedadId);
-    long countByPropiedadId(Long propiedadId);
 }

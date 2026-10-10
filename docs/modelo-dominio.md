@@ -26,7 +26,7 @@ El dominio de MundoTerraza modela una plataforma de reservas de alojamientos don
 
 - **Usuarios** se registran como **huéspedes** y pueden habilitarse como **anfitriones**.
 - **Anfitriones** publican **propiedades** con múltiples **habitaciones** reservables de forma independiente.
-- **Huéspedes** reservan habitaciones, pagan, completan la estadía y dejan **reseñas**.
+- **Huéspedes** reservan habitaciones y pagan en un solo paso (instant booking). La pasarela simulada confirma la reserva automáticamente. Al finalizar la estadía, el anfitrión completa la reserva, se genera la liquidación y el huésped puede dejar una **reseña**.
 - La plataforma retiene una **comisión del 15%** de cada reserva completada.
 
 El diseño sigue principios de **DDD aplicado**: entidades ricas con invariantes, Value Objects inmutables y agregados con raíz identificable.
@@ -50,6 +50,7 @@ El diseño sigue principios de **DDD aplicado**: entidades ricas con invariantes
 | **Notificación** | Mensaje in-app generado por eventos del sistema. |
 | **Bloqueo** | Rango de fechas que el anfitrión marca como no disponible. |
 | **Comisión** | Porcentaje (15%) que la plataforma retiene del subtotal de la reserva. |
+| **Instant booking** | Modelo de reserva donde el huésped paga al reservar y la confirmación es automática. La pasarela simulada aprueba o rechaza el pago. |
 
 ---
 
@@ -164,11 +165,14 @@ Reserva (raíz)
 
 **Invariantes:**
 
+- La propiedad de la habitación debe estar en estado `ACTIVA`.
 - Fecha fin estrictamente posterior a la fecha inicio.
 - No puede solaparse con reservas activas de la misma habitación (respetando stock).
 - Precio congelado al crear la reserva.
-- No se puede cancelar una reserva COMPLETADA.
-- No se puede confirmar una reserva CANCELADA.
+- No se puede cancelar una reserva `COMPLETADA`.
+- Solo se puede confirmar una reserva `PENDIENTE`.
+- Solo se puede completar una reserva `CONFIRMADA`.
+- Solo el anfitrión de la propiedad puede completar la reserva.
 
 ### Agregado `Review`
 
@@ -317,7 +321,8 @@ Reserva de una habitación por un huésped en un rango de fechas.
 
 **Métodos de negocio:**
 
-- `aprobar()`, `rechazar()`, `reembolsar()`.
+- `aprobar()`, `rechazar()` — invocados automáticamente por `PagoService.registrar()` según el resultado de la pasarela simulada.
+- `reembolsar()` — existe en el dominio, no expuesto en la API v1.
 
 ### Liquidacion
 
@@ -540,7 +545,7 @@ Los Value Objects son inmutables, se validan en el constructor y se comparan por
 
 ### Propiedades
 
-- Publicación requiere: categoría activa, ≥1 habitación, ≥1 imagen.
+- Publicación requiere: categoría activa, ≥1 habitación, ≥1 imagen y **≥1 habitación en estado `DISPONIBLE`**.
 - Máximo 5 imágenes por propiedad y por habitación.
 - El anfitrión es el único autorizado a modificar su propiedad.
 - No se puede eliminar una propiedad con reservas activas (soft delete).
@@ -549,21 +554,31 @@ Los Value Objects son inmutables, se validan en el constructor y se comparan por
 ### Reservas
 
 - La reserva se realiza sobre una **habitación**, no sobre la propiedad.
+- La **propiedad** de la habitación debe estar en estado `ACTIVA`. No se puede reservar en propiedades `BORRADOR`, `INACTIVA` o `ELIMINADA`.
 - No se puede reservar la propia propiedad.
 - La disponibilidad se valida por rango de fechas, considerando reservas activas y bloqueos.
 - El subtotal = precioNoche × noches × cantidad.
 - La comisión es del 15% del subtotal.
 - El monto del anfitrión = subtotal - comisión.
-- No se puede cancelar una reserva COMPLETADA.
-- No se puede confirmar una reserva CANCELADA.
+- No se puede cancelar una reserva `COMPLETADA`.
+- La reserva se confirma automáticamente al aprobar el pago (instant booking).
+- Solo el **anfitrión de la propiedad** puede completar una reserva (transición `CONFIRMADA → COMPLETADA`).
 - Cada cambio de estado genera una entrada en `HistorialEstadoReserva`.
 
 ### Pagos
 
 - Un pago corresponde 1:1 a una reserva.
-- El monto debe coincidir con el subtotal.
-- Al aprobar el pago, la reserva pasa a CONFIRMADA.
-- Al rechazar el pago, la reserva vuelve a PENDIENTE.
+- El monto se copia del subtotal de la reserva al crear el pago.
+- El endpoint público es `POST /api/pagos`. Simula la pasarela según la referencia:
+  - Si empieza con `FAIL-` → pago `RECHAZADO`. La reserva sigue `PENDIENTE`.
+  - Cualquier otra referencia (o `null`) → pago `APROBADO`. La reserva pasa a `CONFIRMADA` automáticamente.
+- Reintento permitido: si existe un pago `RECHAZADO` previo, se reutiliza y se vuelve a simular.
+- Si ya existe un pago `APROBADO`, se rechaza el request con `400`.
+
+### Bloqueos de fecha
+
+- Un `BloqueoFecha` no puede solaparse con otros `BloqueoFecha` ni con `Reserva` en estado `PENDIENTE` o `CONFIRMADA` de la misma habitación.
+- Un `BloqueoFecha` anula la disponibilidad total del rango (el anfitrión bloquea la habitación completa, no una unidad del stock).
 
 ### Reviews
 
@@ -578,6 +593,7 @@ Los Value Objects son inmutables, se validan en el constructor y se comparan por
 
 - **Hard delete** si la entidad no tiene historial.
 - **Soft delete** (estado `ELIMINADA`) si tiene reservas, reviews o historial.
+- Al hacer **soft delete de una Propiedad**, sus **Habitaciones pasan a `INACTIVA`** automáticamente.
 - Nunca se borran: `Reserva`, `Pago`, `Liquidacion`, `HistorialEstadoReserva`.
 
 ---
@@ -605,18 +621,34 @@ Los Value Objects son inmutables, se validan en el constructor y se comparan por
 ### Reserva
 
 ```
-[Crear] → PENDIENTE ──(confirmar/pago)──→ CONFIRMADA ──(completar)──→ COMPLETADA
+[Crear] → PENDIENTE ──(pago aprobado)──→ CONFIRMADA ──(completar)──→ COMPLETADA
               │                              │
               └──(cancelar)──→ CANCELADA ←───┘
 ```
 
+**Disparadores:**
+- `PENDIENTE`: se crea la reserva (`POST /api/reservas`).
+- `CONFIRMADA`: el huésped registra y la pasarela simulada aprueba el pago (`POST /api/pagos` con referencia que no empieza con `FAIL-`). Es automático, no requiere acción manual.
+- `CANCELADA`: `PUT /api/reservas/{id}/cancelar` por huésped o anfitrión. No se puede cancelar una reserva `COMPLETADA`.
+- `COMPLETADA`: `PUT /api/reservas/{id}/completar` por el anfitrión. Genera la liquidación automáticamente.
+
 ### Pago
 
 ```
-[Registrar] → PENDIENTE ──(aprobar)──→ APROBADO ──(reembolsar)──→ REEMBOLSADO
-                  │
-                  └──(rechazar)──→ RECHAZADO
+[POST /api/pagos] → PENDIENTE ──(pasarela simulada OK)──→ APROBADO ──(reembolsar)──→ REEMBOLSADO
+                        │
+                        └──(pasarela simulada FAIL-)──→ RECHAZADO
+                                                          │
+                                                          └──(reintento)──→ APROBADO
 ```
+
+**Disparadores:**
+- `PENDIENTE`: se crea el pago (`POST /api/pagos`).
+- `APROBADO`: si la `referencia` **no** empieza con `FAIL-`. Confirmación automática de la reserva asociada.
+- `RECHAZADO`: si la `referencia` empieza con `FAIL-`. La reserva sigue en `PENDIENTE`.
+- `REEMBOLSADO`: existe el método `Pago.reembolsar()` en el dominio, pero **no está expuesto en la API v1**.
+
+**Reintento:** si existe un pago en estado `RECHAZADO` para esa reserva, el huésped puede volver a llamar `POST /api/pagos` con una nueva referencia. El pago se reutiliza y se vuelve a simular. Si ya existe un pago `APROBADO`, el request devuelve `400`.
 
 ### Review
 

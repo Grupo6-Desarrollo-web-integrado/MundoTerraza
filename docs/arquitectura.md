@@ -150,11 +150,13 @@ La regla fundamental es: **las dependencias apuntan siempre hacia el dominio**.
 
 | Capa | Puede depender de | No puede depender de |
 |------|-------------------|----------------------|
-| **Controller** | Service, DTO | Repository, Domain (entidades), Infrastructure |
+| **Controller** | Service, DTO, `CustomUserDetails` (ver nota) | Repository, Domain (entidades), Infrastructure genérica |
 | **Service** | Domain, Repository, DTO, Mapper, Security, Storage | Controller |
 | **Repository** | Domain (entidades) | Service, Controller |
 | **Domain** | Java estándar, Jakarta Persistence | Spring, HTTP, Repository, Service |
 | **Config** | Todo (es transversal) | — |
+
+> **Excepción pragmática:** los controllers importan `app.infrastructure.security.CustomUserDetails` para recibir el usuario autenticado vía `@AuthenticationPrincipal`. Es una dependencia directa a Infrastructure aceptada por pragmatismo: el filtro JWT ya vive en esa capa, y evitar el acoplamiento requeriría duplicar el modelo de seguridad en `application/`. Documentado como compromiso consciente.
 
 ---
 
@@ -277,8 +279,8 @@ Coordina los casos de uso. Usa el dominio y los adaptadores, pero **no contiene 
 | `PropiedadService` | CRUD, publicación, imágenes |
 | `HabitacionService` | CRUD, gestión de imágenes |
 | `DisponibilidadService` | Cálculo de disponibilidad por rango |
-| `ReservaService` | Crear, confirmar, cancelar, historial |
-| `PagoService` | Registrar, aprobar, rechazar |
+| `ReservaService` | Crear, cancelar, completar, historial |
+| `PagoService` | Registrar con simulación de pasarela (`simularPasarela()`: referencia con prefijo `FAIL-` → rechazo, cualquier otra → aprobación) |
 | `LiquidacionService` | Generación de liquidaciones |
 | `ReviewService` | Crear, editar, responder, recalcular rating |
 | `FavoritoService` | Wishlist |
@@ -320,6 +322,8 @@ Coordina los casos de uso. Usa el dominio y los adaptadores, pero **no contiene 
 
 - `PurgaNotificacionesJob`: borra notificaciones leídas > 90 días (diario 03:00).
 - `ReconciliacionRatingJob`: recalcula rating de propiedades (diario 03:30).
+
+**Nota (trabajo futuro):** el módulo de liquidaciones no tiene job programado. Hoy se generan al completar una reserva, pero no hay proceso que marque `Liquidacion.PENDIENTE → PAGADA` ni que notifique al anfitrión sobre liquidaciones pendientes. Se deja anotado para una iteración futura.
 
 **`infrastructure/seed/`**:
 
@@ -373,6 +377,55 @@ Ejemplo: `POST /api/reservas`
 12. RequestIdFilter limpia el MDC
 ```
 
+### Ejemplo 2: `POST /api/pagos` (instant booking)
+
+```
+1. Navegador envía POST con Authorization: Bearer <access>
+   ↓
+2. RequestIdFilter → asigna requestId al MDC
+   ↓
+3. JwtAuthenticationFilter → valida firma y expiración
+   → Carga Usuario y lo coloca en SecurityContext
+   ↓
+4. PagoController → valida @Valid sobre CrearPagoRequest
+   → Obtiene usuario autenticado de @AuthenticationPrincipal
+   → Llama a pagoService.registrar(usuarioId, request)
+   ↓
+5. LoggingAspect intercepta la llamada (DEBUG)
+   ↓
+6. PagoService (application/service)
+   → Carga Reserva con relaciones (reservaRepository)
+   → Verifica que la reserva pertenece al usuario
+   → Verifica que la reserva está PENDIENTE
+   → Si existe Pago APROBADO previo → BusinessException
+   → Si existe Pago RECHAZADO previo → reutiliza instancia
+   → Si no existe Pago → crea uno nuevo
+   ↓
+7. Simulación de pasarela (simularPasarela)
+   → Si referencia empieza con "FAIL-" → rechazo
+   → Cualquier otra → aprobación
+   ↓
+8. Escenario aprobado:
+   → Pago.aprobar()
+   → Reserva.confirmar()
+   → HistorialEstadoReserva registrado
+   → Notificaciones al huésped y al anfitrión
+   → log.info("Pago aprobado id=... reservaId=... usuarioId=...")
+   ↓
+9. Escenario rechazado:
+   → Pago.rechazar()
+   → Notificación al huésped
+   → log.warn("Pago rechazado por pasarela simulada reservaId=... usuarioId=...")
+   ↓
+10. PagoMapper traduce Entidad → PagoResponse (record)
+    ↓
+11. Controller devuelve ResponseEntity<PagoResponse> con 201
+    ↓
+12. GlobalExceptionHandler captura excepciones si las hubiera
+    ↓
+13. RequestIdFilter limpia el MDC
+```
+
 ---
 
 ## 🎨 Patrones aplicados
@@ -390,6 +443,7 @@ Ejemplo: `POST /api/reservas`
 | **Filter Chain** | `JwtAuthenticationFilter` | Intercepción por request |
 | **Aspect** | `LoggingAspect` | Cross-cutting concern (logging) |
 | **Observer** | `NotificacionService` | Reacción a eventos de dominio |
+| **Fake Gateway** | `PagoService.simularPasarela()` | Simula una pasarela externa sin integrarla, controlada por prefijo en la referencia |
 
 ---
 
@@ -461,8 +515,8 @@ Cada petición HTTP obtiene un `requestId` (UUID acortado) que se propaga por MD
 | Nivel | Uso |
 |-------|-----|
 | `ERROR` | Fallos no controlados, excepciones inesperadas |
-| `WARN` | Intentos de login fallidos, accesos denegados, solapes de reserva |
-| `INFO` | Hitos de negocio (usuario registrado, reserva creada, propiedad publicada) |
+| `WARN` | Intentos de login fallidos (correo enmascarado), accesos denegados, solapes de reserva, pago rechazado por pasarela simulada |
+| `INFO` | Hitos de negocio (usuario registrado, become-host, reserva creada/cancelada/completada, pago aprobado, review creada/respondida, propiedad creada/publicada/desactivada/eliminada, habitación creada/eliminada, liquidación generada, bloqueo creado/eliminado) |
 | `DEBUG` | Entrada/salida de servicios (via `LoggingAspect`) |
 | `TRACE` | Detalle fino (no usado por defecto) |
 
@@ -470,6 +524,9 @@ Cada petición HTTP obtiene un `requestId` (UUID acortado) que se propaga por MD
 
 - `logback-spring.xml` con rotación diaria y retención 30 días.
 - Consola con colores en perfil `dev`, archivo `logs/mundo-terraza.log` en `prod`.
+- `LoggingAspect` intercepta servicios de `application.service..*` y registra entrada/salida en DEBUG.
+- `log.info` explícito en hitos de negocio desde cada servicio (ver tabla de niveles).
+- `log.warn` en intentos de login fallidos (con correo enmascarado `j***@dominio.com`) y en pagos rechazados.
 - Sin passwords ni tokens en logs.
 
 ---
@@ -492,3 +549,4 @@ Cada petición HTTP obtiene un `requestId` (UUID acortado) que se propaga por MD
 | 12 | Rating denormalizado en Propiedad | Evita `AVG` costoso en cada consulta de catálogo |
 | 13 | Bloqueo de cuenta tras 5 intentos fallidos | Mitigación básica contra fuerza bruta |
 | 14 | Sin verificación de email en v1 | Fuera de alcance; el backend está preparado para añadirlo |
+| 15 | Instant booking con pasarela simulada | El huésped paga y la confirmación es automática. Reduce fricción, elimina el endpoint `/confirmar`, y permite reintento tras rechazo. La simulación con prefijo `FAIL-` habilita pruebas end-to-end sin pasarela real. |

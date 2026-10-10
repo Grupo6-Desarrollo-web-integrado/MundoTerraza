@@ -15,6 +15,8 @@ import app.infrastructure.repository.HabitacionRepository;
 import app.infrastructure.repository.ImagenRepository;
 import app.infrastructure.repository.PropiedadRepository;
 import app.infrastructure.storage.FileStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,6 +27,7 @@ import java.util.List;
  */
 @Service
 public class HabitacionService{
+    private static final Logger log=LoggerFactory.getLogger(HabitacionService.class);
     private static final int MAX_IMAGENES=5;
     private final HabitacionRepository habitacionRepository;
     private final PropiedadRepository propiedadRepository;
@@ -57,6 +60,8 @@ public class HabitacionService{
                 request.getMaxBebes(), request.getMaxMascotas(), request.getCantidadDormitorios(),
                 request.getCantidadBanios(), request.getMetrosCuadrados(), request.getStockTotal());
         habitacionRepository.save(habitacion);
+        log.info("Habitacion creada id={} propiedadId={} anfitrionId={}",
+                habitacion.getId(), propiedadId, usuarioId);
         return habitacionMapper.aResponse(habitacion);
     }
     @Transactional
@@ -91,6 +96,8 @@ public class HabitacionService{
         }
         h.desactivar();
         habitacionRepository.save(h);
+        log.info("Habitacion desactivada id={} propiedadId={} anfitrionId={}",
+                habitacionId, h.getPropiedad().getId(), usuarioId);
     }
     @Transactional
     public void agregarImagen(Long usuarioId, Long habitacionId, MultipartFile archivo){

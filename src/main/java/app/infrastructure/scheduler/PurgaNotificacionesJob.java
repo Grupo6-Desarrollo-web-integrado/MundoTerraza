@@ -27,7 +27,7 @@ public class PurgaNotificacionesJob{
         List<Notificacion> obsoletas=notificacionRepository
                 .findByLeidaTrueAndFechaCreacionBefore(limite);
         if(!obsoletas.isEmpty()){
-            notificacionRepository.deleteAll(obsoletas);
+            notificacionRepository.deleteAllInBatch(obsoletas);
             log.info("Purga de notificaciones: {} eliminadas", obsoletas.size());
         }
     }

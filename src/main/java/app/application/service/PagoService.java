@@ -15,6 +15,8 @@ import app.domain.model.Reserva;
 import app.infrastructure.repository.HistorialEstadoReservaRepository;
 import app.infrastructure.repository.PagoRepository;
 import app.infrastructure.repository.ReservaRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 /**
@@ -23,6 +25,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class PagoService{
+    private static final Logger log=LoggerFactory.getLogger(PagoService.class);
+    private static final String PREFIJO_FALLO="FAIL-";
     private final PagoRepository pagoRepository;
     private final ReservaRepository reservaRepository;
     private final HistorialEstadoReservaRepository historialRepository;
@@ -48,52 +52,44 @@ public class PagoService{
             throw new ForbiddenException("La reserva no te pertenece");
         if(reserva.getEstado()!=EstadoReserva.PENDIENTE)
             throw new BusinessException("La reserva no esta pendiente de pago");
-        if(pagoRepository.findByReservaId(reserva.getId()).isPresent())
-            throw new BusinessException("La reserva ya tiene un pago registrado");
-        TipoPago tipo=parsearTipo(request.getTipoPago());
-        Pago pago=new Pago(reserva, tipo, request.getReferencia());
-        pagoRepository.save(pago);
-        return pagoMapper.aResponse(pago);
-    }
-    @Transactional
-    public PagoResponse aprobar(Long usuarioId, Long pagoId){
-        Pago pago=pagoRepository.findById(pagoId)
-                .orElseThrow(()->new NotFoundException("Pago no encontrado"));
-        Reserva reserva=reservaRepository.buscarConRelaciones(pago.getReserva().getId());
-        if(!reserva.getUsuario().getId().equals(usuarioId))
-            throw new ForbiddenException("El pago no te pertenece");
-        pago.aprobar();
-        pagoRepository.save(pago);
-        if(reserva.getEstado()==EstadoReserva.PENDIENTE){
-            reserva.confirmar();
-            reservaRepository.save(reserva);
-            historialRepository.save(new HistorialEstadoReserva(reserva, EstadoReserva.PENDIENTE,
-                    EstadoReserva.CONFIRMADA, "Pago aprobado"));
-            notificacionService.crear(reserva.getUsuario(), TipoNotificacion.PAGO_APROBADO,
-                    "Pago aprobado",
-                    "Tu pago para "+reserva.getPropiedad().getTitulo()+" fue aprobado",
-                    reserva.getId());
-            notificacionService.crear(reserva.getPropiedad().getAnfitrion(),
-                    TipoNotificacion.RESERVA_CONFIRMADA,
-                    "Nueva reserva confirmada",
-                    "Se confirmo una reserva en "+reserva.getPropiedad().getTitulo(),
-                    reserva.getId());
+        Pago pago=pagoRepository.findByReservaId(reserva.getId()).orElse(null);
+        if(pago!=null&&pago.getEstado()==EstadoPago.APROBADO)
+            throw new BusinessException("La reserva ya tiene un pago aprobado");
+        if(pago==null){
+            TipoPago tipo=parsearTipo(request.getTipoPago());
+            pago=new Pago(reserva, tipo, request.getReferencia());
         }
-        return pagoMapper.aResponse(pago);
-    }
-    @Transactional
-    public PagoResponse rechazar(Long usuarioId, Long pagoId){
-        Pago pago=pagoRepository.findById(pagoId)
-                .orElseThrow(()->new NotFoundException("Pago no encontrado"));
-        Reserva reserva=reservaRepository.buscarConRelaciones(pago.getReserva().getId());
-        if(!reserva.getUsuario().getId().equals(usuarioId))
-            throw new ForbiddenException("El pago no te pertenece");
-        pago.rechazar();
-        pagoRepository.save(pago);
-        notificacionService.crear(reserva.getUsuario(), TipoNotificacion.PAGO_RECHAZADO,
-                "Pago rechazado",
-                "Tu pago para "+reserva.getPropiedad().getTitulo()+" fue rechazado",
-                reserva.getId());
+        boolean pasarelaOk=simularPasarela(request.getReferencia());
+        if(pasarelaOk){
+            pago.aprobar();
+            pagoRepository.save(pago);
+            if(reserva.getEstado()==EstadoReserva.PENDIENTE){
+                reserva.confirmar();
+                reservaRepository.save(reserva);
+                historialRepository.save(new HistorialEstadoReserva(reserva, EstadoReserva.PENDIENTE,
+                        EstadoReserva.CONFIRMADA, "Pago aprobado"));
+                notificacionService.crear(reserva.getUsuario(), TipoNotificacion.PAGO_APROBADO,
+                        "Pago aprobado",
+                        "Tu pago para "+reserva.getPropiedad().getTitulo()+" fue aprobado",
+                        reserva.getId());
+                notificacionService.crear(reserva.getPropiedad().getAnfitrion(),
+                        TipoNotificacion.RESERVA_CONFIRMADA,
+                        "Nueva reserva confirmada",
+                        "Se confirmo una reserva en "+reserva.getPropiedad().getTitulo(),
+                        reserva.getId());
+            }
+            log.info("Pago aprobado id={} reservaId={} usuarioId={}",
+                    pago.getId(), reserva.getId(), usuarioId);
+        }else{
+            pago.rechazar();
+            pagoRepository.save(pago);
+            notificacionService.crear(reserva.getUsuario(), TipoNotificacion.PAGO_RECHAZADO,
+                    "Pago rechazado",
+                    "Tu pago para "+reserva.getPropiedad().getTitulo()+" fue rechazado",
+                    reserva.getId());
+            log.warn("Pago rechazado por pasarela simulada reservaId={} usuarioId={}",
+                    reserva.getId(), usuarioId);
+        }
         return pagoMapper.aResponse(pago);
     }
     @Transactional(readOnly=true)
@@ -106,6 +102,10 @@ public class PagoService{
         if(!esHuesped&&!esAnfitrion)
             throw new ForbiddenException("No puedes ver este pago");
         return pagoMapper.aResponse(pago);
+    }
+    private boolean simularPasarela(String referencia){
+        if(referencia==null||referencia.isBlank())return true;
+        return !referencia.toUpperCase().startsWith(PREFIJO_FALLO);
     }
     private TipoPago parsearTipo(String tipo){
         try{

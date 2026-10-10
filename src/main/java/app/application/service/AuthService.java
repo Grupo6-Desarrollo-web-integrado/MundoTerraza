@@ -15,6 +15,8 @@ import app.domain.valueobject.Password;
 import app.domain.valueobject.Telefono;
 import app.infrastructure.repository.UsuarioRepository;
 import app.infrastructure.security.JwtService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -25,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class AuthService{
+    private static final Logger log=LoggerFactory.getLogger(AuthService.class);
     private final UsuarioRepository usuarioRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
@@ -50,6 +53,7 @@ public class AuthService{
         String hash=passwordEncoder.encode(password.getValor());
         Usuario usuario=new Usuario(request.getNombre(), correo, hash);
         usuarioRepository.save(usuario);
+        log.info("Usuario registrado id={} correo={}", usuario.getId(), correo.getValor());
         return construirRespuesta(usuario);
     }
     @Transactional
@@ -60,6 +64,7 @@ public class AuthService{
         if(usuario.estaBloqueado())
             throw new AccountLockedException("Cuenta bloqueada temporalmente. Intenta mas tarde");
         if(!passwordEncoder.matches(request.getPassword(), usuario.getPasswordHash())){
+            log.warn("Login fallido correo={}", enmascarar(correo.getValor()));
             usuario.registrarIntentoFallido(maxIntentos, minutosBloqueo);
             usuarioRepository.save(usuario);
             if(usuario.estaBloqueado())
@@ -88,6 +93,7 @@ public class AuthService{
         Dni dni=Dni.de(request.getDni());
         usuario.convertirEnAnfitrion(telefono, dni, request.getCiudad(), request.getBiografia());
         usuarioRepository.save(usuario);
+        log.info("Usuario convertido en anfitrion id={}", usuarioId);
         return construirRespuesta(usuario);
     }
     private AuthResponse construirRespuesta(Usuario usuario){
@@ -99,5 +105,11 @@ public class AuthService{
     }
     private String rolDe(Usuario usuario){
         return usuario.isEsAnfitrion()?"ANFITRION":"HUESPED";
+    }
+    private static String enmascarar(String correo){
+        if(correo==null||correo.isBlank())return "***";
+        int arroba=correo.indexOf('@');
+        if(arroba<=1)return "***";
+        return correo.charAt(0)+"***"+correo.substring(arroba);
     }
 }

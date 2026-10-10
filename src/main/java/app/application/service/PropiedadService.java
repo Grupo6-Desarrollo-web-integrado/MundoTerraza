@@ -26,6 +26,8 @@ import app.infrastructure.repository.PropiedadSpecification;
 import app.infrastructure.repository.ServicioRepository;
 import app.infrastructure.repository.UsuarioRepository;
 import app.infrastructure.storage.FileStorageService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -41,6 +43,7 @@ import java.util.List;
  */
 @Service
 public class PropiedadService{
+    private static final Logger log=LoggerFactory.getLogger(PropiedadService.class);
     private static final int MAX_IMAGENES=5;
     private final PropiedadRepository propiedadRepository;
     private final UsuarioRepository usuarioRepository;
@@ -97,6 +100,7 @@ public class PropiedadService{
                 request.getLatitud(), request.getLongitud(), tipo, politica);
         aplicarServicios(propiedad, request.getServicioIds());
         propiedadRepository.save(propiedad);
+        log.info("Propiedad creada id={} anfitrionId={}", propiedad.getId(), anfitrionId);
         return propiedadMapper.aDetalle(propiedad);
     }
     @Transactional
@@ -135,9 +139,13 @@ public class PropiedadService{
                 urls.add(img.getUrl());
         try{
             propiedadRepository.delete(propiedad);
+            log.info("Propiedad eliminada (hard) id={} anfitrionId={}", propiedadId, usuarioId);
         }catch(Exception e){
+            propiedad.getHabitaciones().forEach(h->h.desactivar());
             propiedad.marcarEliminada();
             propiedadRepository.save(propiedad);
+            log.info("Propiedad marcada ELIMINADA (soft) id={} anfitrionId={}",
+                    propiedadId, usuarioId);
         }
         urls.forEach(fileStorageService::eliminar);
     }
@@ -148,6 +156,7 @@ public class PropiedadService{
         verificarPropietario(propiedad, usuarioId);
         propiedad.publicar();
         propiedadRepository.save(propiedad);
+        log.info("Propiedad publicada id={} anfitrionId={}", propiedadId, usuarioId);
         return propiedadMapper.aDetalle(propiedad);
     }
     @Transactional
@@ -157,6 +166,7 @@ public class PropiedadService{
         verificarPropietario(propiedad, usuarioId);
         propiedad.desactivar();
         propiedadRepository.save(propiedad);
+        log.info("Propiedad desactivada id={} anfitrionId={}", propiedadId, usuarioId);
         return propiedadMapper.aDetalle(propiedad);
     }
     @Transactional
