@@ -1,0 +1,26 @@
+/* =====================================================================
+   MundoTerraza - CSS entry point
+   Orden: tokens -> base -> componentes -> utilidades -> páginas.
+   No escribir reglas aquí. Solo @imports.
+   ===================================================================== */
+
+@import url("base/_tokens.css");
+@import url("base/_reset.css");
+@import url("base/_typography.css");
+
+@import url("components/_navbar.css");
+@import url("components/_buttons.css");
+@import url("components/_inputs.css");
+@import url("components/_cards.css");
+@import url("components/_modals.css");
+@import url("components/_search.css");
+@import url("components/_gallery.css");
+@import url("components/_preview.css");
+@import url("components/_badges.css");
+@import url("components/_alerts.css");
+
+@import url("utilities/_helpers.css");
+
+@import url("pages/_index.css");
+@import url("pages/_auth.css");
+@import url("pages/_detalle.css");

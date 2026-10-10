@@ -1,0 +1,121 @@
+/* =====================================================================
+   Cards de propiedades
+   ===================================================================== */
+
+.catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--space-6) var(--space-5);
+}
+
+.card {
+  display: block;
+  color: inherit;
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+}
+
+.card__image-wrap {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  background-color: var(--color-bg-soft);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-3);
+}
+
+.card__image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-base);
+}
+
+.card:hover .card__image {
+  transform: scale(1.04);
+}
+
+.card__image-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: var(--fs-2xl);
+}
+
+.card__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card__location {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__title {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__host {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card__footer {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.card__price {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
+}
+
+.card__price-unit {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* Card de panel (usado en detalle sidebar y host) */
+.panel {
+  padding: var(--space-5);
+  background-color: var(--color-bg);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+}
+
+.panel--sticky {
+  position: sticky;
+  top: calc(var(--navbar-height) + var(--space-6));
+}
+
+/* Rating dentro de la card */
+.card__rating {
+  margin-left: var(--space-2);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
+}

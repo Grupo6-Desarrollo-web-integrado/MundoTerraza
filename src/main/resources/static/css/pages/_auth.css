@@ -1,0 +1,46 @@
+/* =====================================================================
+   Página: auth (login / registro)
+   ===================================================================== */
+
+.auth {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: var(--space-6);
+  background-color: var(--color-bg-soft);
+}
+
+.auth__card {
+  width: 100%;
+  max-width: 480px;
+  padding: var(--space-6) var(--space-8);
+  background-color: var(--color-bg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-bold);
+  color: var(--color-primary);
+}
+
+.auth__footer {
+  text-align: center;
+  margin-top: var(--space-5);
+  font-size: var(--fs-sm);
+}
+
+.auth__footer-link {
+  color: var(--color-text-muted);
+}
+
+.auth__footer-link:hover {
+  color: var(--color-primary);
+}

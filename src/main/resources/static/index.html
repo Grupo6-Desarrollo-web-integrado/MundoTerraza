@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MundoTerraza - Tu próximo destino te espera</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- Navbar dinámico -->
+  <div id="app-navbar"></div>
+
+  <!-- Barra de búsqueda -->
+  <section class="index__search-section">
+    <form id="searchForm" class="search" autocomplete="off">
+      <div class="search__field">
+        <label class="search__label" for="searchTexto">Dónde</label>
+        <input type="text" id="searchTexto" name="searchTexto" class="search__input"
+               placeholder="Explora destinos">
+      </div>
+      <div class="search__field">
+        <label class="search__label" for="searchHuespedes">Quién</label>
+        <input type="number" id="searchHuespedes" name="searchHuespedes" class="search__input"
+               min="1" max="50" placeholder="¿Cuántos?">
+      </div>
+      <button type="submit" class="btn btn--search search__submit" aria-label="Buscar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2.5" stroke-linecap="round">
+          <circle cx="11" cy="11" r="7"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+      </button>
+    </form>
+  </section>
+
+  <!-- Catálogo -->
+  <main class="index__catalog" id="catalogo">
+    <h1 class="index__title" id="catalogoTitulo">Alojamientos disponibles</h1>
+    <div class="catalog" id="catalogoGrid"></div>
+  </main>
+
+  <script type="module" src="js/pages/index.js"></script>
+</body>
+</html>

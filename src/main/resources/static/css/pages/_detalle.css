@@ -1,0 +1,102 @@
+/* =====================================================================
+   Página: detalle (alojamiento)
+   ===================================================================== */
+
+.detalle {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-4);
+}
+
+.detalle__back {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text);
+  margin-bottom: var(--space-4);
+}
+
+.detalle__back:hover {
+  color: var(--color-primary);
+}
+
+.detalle__header {
+  margin-bottom: var(--space-5);
+}
+
+.detalle__title {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-bold);
+  margin-bottom: var(--space-2);
+}
+
+.detalle__location {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+.detalle__layout {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-8);
+  margin-top: var(--space-6);
+}
+
+.detalle__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.detalle__section {
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border-soft);
+}
+
+.detalle__section:last-child {
+  border-bottom: none;
+}
+
+.detalle__section-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  margin-bottom: var(--space-3);
+}
+
+.detalle__description {
+  font-size: var(--fs-sm);
+  line-height: var(--lh-loose);
+  white-space: pre-line;
+}
+
+/* Host block */
+.host-block {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.host-block__name {
+  font-size: var(--fs-base);
+  font-weight: var(--fw-semibold);
+  margin-bottom: 2px;
+}
+
+.host-block__sub {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+}
+
+/* Sidebar (panel de reserva) */
+.detalle__sidebar {
+  position: relative;
+}
+
+@media (max-width: 991px) {
+  .detalle__layout {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
+  }
+}

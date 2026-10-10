@@ -1,0 +1,122 @@
+/* =====================================================================
+   Modales
+   ===================================================================== */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  background-color: var(--color-bg-overlay);
+  overflow-y: auto;
+}
+
+.modal--open {
+  display: flex;
+}
+
+.modal__dialog {
+  width: 100%;
+  max-width: 520px;
+  background-color: var(--color-bg);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  animation: modal-in 0.2s ease;
+}
+
+.modal__dialog--lg {
+  max-width: 800px;
+}
+
+@keyframes modal-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.modal__header {
+  padding: var(--space-5) var(--space-6) var(--space-2);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.modal__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-bold);
+}
+
+.modal__subtitle {
+  font-size: var(--fs-sm);
+  color: var(--color-text-muted);
+  margin-top: var(--space-1);
+}
+
+.modal__close {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--color-text);
+  font-size: var(--fs-md);
+  transition: background-color var(--transition-fast);
+}
+
+.modal__close:hover {
+  background-color: var(--color-bg-soft);
+}
+
+.modal__body {
+  padding: var(--space-4) var(--space-6);
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.modal__footer {
+  padding: var(--space-2) var(--space-6) var(--space-6);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+/* Tabs dentro de modal (login/registro) */
+.tabs {
+  display: flex;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  background-color: var(--color-bg-soft);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+}
+
+.tabs__item {
+  flex: 1;
+  padding: var(--space-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-semibold);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  transition: background-color var(--transition-fast),
+              color var(--transition-fast);
+}
+
+.tabs__item--active {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-pane {
+  display: none;
+}
+
+.tab-pane--active {
+  display: block;
+}

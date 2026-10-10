@@ -1,0 +1,31 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-terraza
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: mundo_terraza_db
+      MYSQL_USER: terraza
+      MYSQL_PASSWORD: terraza123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-terraza-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot123"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - terraza-net
+
+volumes:
+  mysql-terraza-data:
+    name: mysql-terraza-data
+
+networks:
+  terraza-net:
+    name: terraza-net
+    driver: bridge
