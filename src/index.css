@@ -1,7 +1,10 @@
 :root {
   color-scheme: light dark;
   background-color: #ffffff;
-  --padding-page: 1.75rem 3rem;
+  --padding-page: 1.25rem 3rem;
+  --color-primary: #ff385c;
+  --color-black: #171717;
+  --color-gray-light: #6a7282;
 }
 
 /* @media (prefers-color-scheme: dark) {

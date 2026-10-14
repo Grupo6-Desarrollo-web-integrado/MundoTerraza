@@ -5,7 +5,7 @@ import { customElement } from "lit/decorators.js";
 export class ProfileSidebar extends LitElement {
   static styles = css`
     :host {
-      width: 30%;
+      width: 35%;
     }
 
     .profile-sidebar {

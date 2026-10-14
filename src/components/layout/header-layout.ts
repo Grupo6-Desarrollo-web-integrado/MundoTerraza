@@ -2,12 +2,14 @@ import { css, html, LitElement } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import "./header-search";
 import "./header-profile";
+import "./header-nav-host";
 
 @customElement("header-layout")
 export class HeaderLayout extends LitElement {
   static styles = css`
     header {
       padding: var(--padding-page);
+      border-bottom: 1px solid #f3f4f6;
 
       .header-stack {
         display: flex;
@@ -33,6 +35,9 @@ export class HeaderLayout extends LitElement {
   @property({ type: Boolean })
   hideProfile = false;
 
+  @property({ type: Boolean })
+  hideHost = false;
+
   render() {
     return html`<header>
       <div class="header-stack">
@@ -44,6 +49,7 @@ export class HeaderLayout extends LitElement {
           />
         </div>
         ${this.hideProfile ? "" : html`<header-search></header-search>`}
+        ${this.hideHost ? html`<header-nav-host></header-nav-host>` : ""}
         <header-profile></header-profile>
       </div>
     </header>`;

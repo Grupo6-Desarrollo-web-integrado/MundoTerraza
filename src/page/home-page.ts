@@ -41,7 +41,6 @@ export class HomePage extends LitElement {
       <main>
         <div class="container">
           <home-card></home-card>
-          <home-card></home-card>
         </div>
       </main>
     `;
