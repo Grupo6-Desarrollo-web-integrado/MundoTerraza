@@ -1,0 +1,26 @@
+:root {
+  color-scheme: light dark;
+  background-color: #ffffff;
+  --padding-page: 1.75rem 3rem;
+}
+
+/* @media (prefers-color-scheme: dark) {
+  :root {
+    background-color: #16171d;
+    color: #fff;
+  }
+} */
+
+body {
+  margin: 0;
+  /* display: flex;
+  justify-content: center;
+  align-items: center; */
+  min-width: 320px;
+  min-height: 100svh;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
