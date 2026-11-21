@@ -10,6 +10,7 @@ import app.domain.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -36,6 +37,13 @@ public class GlobalExceptionHandler{
     @ExceptionHandler(ConflictoException.class)
     public ResponseEntity<ErrorResponse> conflicto(ConflictoException e, HttpServletRequest request){
         return construir(HttpStatus.CONFLICT, e.getMessage(), request, null);
+    }
+    @ExceptionHandler(OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponse> bloqueoOptimista(OptimisticLockingFailureException e, HttpServletRequest request){
+        log.warn("Conflicto de concurrencia en {}: {}", request.getRequestURI(), e.getMessage());
+        return construir(HttpStatus.CONFLICT,
+                "El recurso fue modificado por otra operacion concurrente. Recarga e intenta de nuevo.",
+                request, null);
     }
     @ExceptionHandler(ForbiddenException.class)
     public ResponseEntity<ErrorResponse> prohibido(ForbiddenException e, HttpServletRequest request){

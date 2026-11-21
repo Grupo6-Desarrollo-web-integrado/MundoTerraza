@@ -18,6 +18,7 @@ import jakarta.persistence.OneToOne;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
@@ -42,6 +43,9 @@ public class Reserva{
     @GeneratedValue(strategy=GenerationType.IDENTITY)
     @Column(name="id_reserva")
     private Long id;
+    @Version
+    @Column(name="version", nullable=false)
+    private Long version;
     @ManyToOne(fetch=FetchType.LAZY, optional=false)
     @JoinColumn(name="id_usuario", nullable=false)
     private Usuario usuario;

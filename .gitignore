@@ -47,3 +47,6 @@ uploads/*
 *.env
 application-local.properties
 application-secret.properties
+tmp/
+docs/openapi/
+static-legacy/

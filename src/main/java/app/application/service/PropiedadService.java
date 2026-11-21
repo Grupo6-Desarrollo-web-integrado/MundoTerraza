@@ -28,6 +28,7 @@ import app.infrastructure.repository.UsuarioRepository;
 import app.infrastructure.storage.FileStorageService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -140,7 +141,7 @@ public class PropiedadService{
         try{
             propiedadRepository.delete(propiedad);
             log.info("Propiedad eliminada (hard) id={} anfitrionId={}", propiedadId, usuarioId);
-        }catch(Exception e){
+        }catch(DataIntegrityViolationException e){
             propiedad.getHabitaciones().forEach(h->h.desactivar());
             propiedad.marcarEliminada();
             propiedadRepository.save(propiedad);
