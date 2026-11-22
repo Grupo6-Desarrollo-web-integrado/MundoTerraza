@@ -1,6 +1,8 @@
 package app.application.dto.request;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 /**
@@ -17,4 +19,9 @@ public class FiltroPropiedadRequest{
     private Double precioMax;
     private Integer huespedes;
     private List<Long> servicioIds=new ArrayList<>();
+    @DateTimeFormat(iso=DateTimeFormat.ISO.DATE)
+    private LocalDate desde;
+    @DateTimeFormat(iso=DateTimeFormat.ISO.DATE)
+    private LocalDate hasta;
+    private Integer cantidad;
 }

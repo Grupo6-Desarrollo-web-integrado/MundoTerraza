@@ -70,10 +70,13 @@ public class PropiedadService{
     }
     @Transactional(readOnly=true)
     public PageResponse<PropiedadCardResponse> listar(FiltroPropiedadRequest filtro, int pagina, int tamanio){
+        validarFiltroFechas(filtro);
+        int cantidad=filtro.getCantidad()!=null?filtro.getCantidad():1;
         Specification<Propiedad> spec=PropiedadSpecification.combinadas(
                 filtro.getTexto(), filtro.getCategoriaId(), filtro.getTipoAlojamiento(),
                 filtro.getPrecioMin(), filtro.getPrecioMax(),
-                filtro.getServicioIds(), filtro.getHuespedes());
+                filtro.getServicioIds(), filtro.getHuespedes(),
+                filtro.getDesde(), filtro.getHasta(), cantidad);
         Pageable pageable=PageRequest.of(pagina, tamanio);
         Page<Propiedad> page=propiedadRepository.findAll(spec, pageable);
         return PageResponse.desde(page, propiedadMapper::aCard);
@@ -233,6 +236,16 @@ public class PropiedadService{
                 throw new BusinessException("El servicio "+s.getNombre()+" no esta activo");
             propiedad.getServicios().add(new ServicioPropiedad(propiedad, s));
         }
+    }
+    private void validarFiltroFechas(FiltroPropiedadRequest filtro){
+        boolean tieneDesde=filtro.getDesde()!=null;
+        boolean tieneHasta=filtro.getHasta()!=null;
+        if(tieneDesde!=tieneHasta)
+            throw new BusinessException("Debe especificar desde y hasta juntos");
+        if(tieneDesde&&!filtro.getHasta().isAfter(filtro.getDesde()))
+            throw new BusinessException("La fecha fin debe ser posterior a la fecha inicio");
+        if(filtro.getCantidad()!=null&&filtro.getCantidad()<1)
+            throw new BusinessException("La cantidad debe ser al menos 1");
     }
     private void verificarPropietario(Propiedad propiedad, Long usuarioId){
         if(!propiedad.getAnfitrion().getId().equals(usuarioId))

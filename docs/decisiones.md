@@ -26,6 +26,7 @@
 | [ADR-014](#adr-014--sin-verificación-de-email-en-v1) | Sin verificación de email en v1 | ✅ Aceptada |
 | [ADR-015](#adr-015--sin-roles-admin-y-agente) | Sin roles ADMIN y AGENTE | ✅ Aceptada |
 | [ADR-016](#adr-016--instant-booking-con-pasarela-simulada) | Instant booking con pasarela simulada | ✅ Aceptada |
+| [ADR-017](#adr-017--filtro-de-disponibilidad-en-catalogo-con-exists) | Filtro de disponibilidad en catálogo con `EXISTS` | ✅ Aceptada |
 
 ---
 
@@ -750,3 +751,42 @@ Al añadir un nuevo ADR:
    - Consecuencias (Positivas / Negativas)
    - Alternativas consideradas
 4. **Ubicación:** `docs/decisiones.md` (todo en un archivo) o `docs/adr/NNN-titulo.md` (un archivo por ADR).
+
+---
+
+## ADR-017 — Filtro de disponibilidad en catálogo con `EXISTS`
+
+**Fecha:** 2026-11-21
+**Estado:** ✅ Aceptada
+
+### Contexto
+
+El catálogo público (`GET /api/propiedades`) no filtraba por fechas: el huésped solo podía consultar disponibilidad por habitación (`GET /api/habitaciones/{id}/disponibilidad`). Para buscar alojamiento por rango se requería N+1 consultas desde el cliente.
+
+### Decisión
+
+Se extiende `FiltroPropiedadRequest` con `desde`, `hasta` y `cantidad`, y se implementa el filtro **en SQL** mediante `Specification<Propiedad>` con `cb.exists()`, no post-filtrado en Java.
+
+Reglas:
+- Requiere `desde` y `hasta` juntos; `hasta > desde`; `cantidad >= 1` (default 1).
+- Una propiedad es "disponible en el rango" si existe al menos una `Habitacion` en estado `DISPONIBLE` cuyo `stockTotal - SUM(cantidad de Reservas activas solapadas) >= cantidad`.
+- Reservas activas: `PENDIENTE` y `CONFIRMADA`.
+- Un `BloqueoFecha` solapado anula la disponibilidad total de la habitación en el rango.
+- Overlap semiabierto: `reserva.fechaInicio < hasta AND reserva.fechaFin > desde`.
+
+### Consecuencias
+
+- La paginación (`total`, `totalPaginas`) refleja el filtro sin post-procesar, porque el `EXISTS` va en el `WHERE`.
+- Se limpiaron 3 `LEFT JOIN` a `habitaciones` preexistentes (`precioMin`, `precioMax`, `huespedes`) que provocaban producto cartesiano con `DISTINCT` forzado. Se reemplazaron por `EXISTS` independientes.
+- Se añadieron índices compuestos en `V4__add_availability_indexes.sql`:
+  - `reservas(id_habitacion, estado, fecha_inicio, fecha_fin)`
+  - `bloqueos_fecha(id_habitacion, fecha_inicio, fecha_fin)`
+  - `habitaciones(id_propiedad, estado)`
+- La semántica replica exactamente `DisponibilidadService.calcular`; el test de integración `PropiedadSpecificationDisponibilidadTest` garantiza paridad con Testcontainers MySQL 8.
+- Sin impacto en el frontend: los parámetros son opcionales; sin `desde`/`hasta` el comportamiento es idéntico al anterior.
+
+### Alternativas descartadas
+
+- **Post-filtrado en Java**: rompe la paginación (`total` mentiría) y carga todas las filas en memoria.
+- **`JOIN` + `GROUP BY` + `HAVING`**: más costoso en MySQL 8 y complica el `Pageable` de Spring Data (que ya hace `count` separado).
+- **Vista materializada**: sin soporte nativo en MySQL 8; overkill para v1.

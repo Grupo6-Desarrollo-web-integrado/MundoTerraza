@@ -1,7 +1,6 @@
 #!/bin/bash
 BASE=http://localhost:8080/api
 
-# Login
 TOKEN=$(curl -s -X POST $BASE/auth/login \
   -H "Content-Type: application/json" \
   -d '{"correo":"test@test.com","password":"secreto123"}' \
@@ -54,12 +53,10 @@ echo "Habitacion creada con ID=$HAB_ID"
 
 echo ""
 echo "=== PUBLICAR PROPIEDAD (debe fallar: falta imagen) ==="
-curl -s -X POST $BASE/propiedades/$PROP_ID/publicar \
-  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST $BASE/propiedades/$PROP_ID/publicar -H "Authorization: Bearer $TOKEN"
 echo ""
 
 echo "=== SUBIR IMAGEN A LA PROPIEDAD ==="
-# Crear imagen dummy
 convert -size 100x100 xc:blue /tmp/test.jpg 2>/dev/null || \
   dd if=/dev/urandom of=/tmp/test.jpg bs=1024 count=10 2>/dev/null
 
@@ -69,8 +66,7 @@ curl -s -X POST $BASE/propiedades/$PROP_ID/imagenes \
 echo ""
 
 echo "=== PUBLICAR PROPIEDAD (ahora debe funcionar) ==="
-curl -s -X POST $BASE/propiedades/$PROP_ID/publicar \
-  -H "Authorization: Bearer $TOKEN"
+curl -s -X POST $BASE/propiedades/$PROP_ID/publicar -H "Authorization: Bearer $TOKEN"
 echo ""
 
 echo "=== CREAR SEGUNDO USUARIO Y RESERVAR ==="
@@ -103,21 +99,35 @@ RES_ID=$(echo "$RES" | grep -oP '"id":\K[0-9]+' | head -1)
 echo "Reserva creada con ID=$RES_ID"
 
 echo ""
-echo "=== REGISTRAR PAGO ==="
+echo "=== REGISTRAR PAGO (instant booking: aprueba y confirma reserva) ==="
 PAGO=$(curl -s -X POST $BASE/pagos \
   -H "Authorization: Bearer $HTOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"reservaId\":$RES_ID,\"tipoPago\":\"TARJETA\",\"referencia\":\"TEST-001\"}")
 echo "$PAGO"
-PAGO_ID=$(echo "$PAGO" | grep -oP '"id":\K[0-9]+' | head -1)
-
-echo ""
-echo "=== APROBAR PAGO (debe confirmar reserva) ==="
-curl -s -X PUT $BASE/pagos/$PAGO_ID/aprobar \
-  -H "Authorization: Bearer $HTOKEN"
-echo ""
+PAGO_ESTADO=$(echo "$PAGO" | grep -oP '"estado":"\K[^"]+')
+echo "Estado del pago: $PAGO_ESTADO"
 
 echo ""
 echo "=== MIS RESERVAS ==="
 curl -s $BASE/reservas/mias -H "Authorization: Bearer $HTOKEN"
 echo ""
+
+echo ""
+echo "=== FILTRO DISPONIBILIDAD EN CATALOGO ==="
+echo "--- sin fechas (debe listar la propiedad ACTIVA) ---"
+curl -s "$BASE/propiedades?pagina=0&tamanio=10" | jq '.total'
+echo "--- rango ocupado 2027-01-10..2027-01-15 (debe ser 0) ---"
+curl -s "$BASE/propiedades?desde=2027-01-10&hasta=2027-01-15" | jq '.total'
+echo "--- rango libre 2026-12-01..2026-12-05 (debe ser >=1) ---"
+curl -s "$BASE/propiedades?desde=2026-12-01&hasta=2026-12-05" | jq '.total'
+echo "--- borde semiabierto hasta==inicio reserva (debe ser >=1) ---"
+curl -s "$BASE/propiedades?desde=2027-01-01&hasta=2027-01-10" | jq '.total'
+echo "--- borde semiabierto desde==fin reserva (debe ser >=1) ---"
+curl -s "$BASE/propiedades?desde=2027-01-15&hasta=2027-01-20" | jq '.total'
+echo "--- validacion: solo desde (esperado 400) ---"
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/propiedades?desde=2027-01-10"
+echo "--- validacion: hasta==desde (esperado 400) ---"
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/propiedades?desde=2027-01-10&hasta=2027-01-10"
+echo "--- validacion: cantidad=0 (esperado 400) ---"
+curl -s -o /dev/null -w '%{http_code}\n' "$BASE/propiedades?desde=2027-01-10&hasta=2027-01-15&cantidad=0"

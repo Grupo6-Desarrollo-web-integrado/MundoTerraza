@@ -423,6 +423,9 @@ GET /api/propiedades?pagina=0&tamanio=10&texto=lima&huespedes=2&categoriaId=3&pr
 | `precioMax` | `Double` | Precio máximo por noche |
 | `huespedes` | `Integer` | Capacidad mínima de adultos |
 | `servicioIds` | `Long[]` | IDs de servicios requeridos |
+| `desde` | `LocalDate` | Fecha de inicio del rango (`yyyy-MM-dd`). Requerido junto con `hasta` |
+| `hasta` | `LocalDate` | Fecha de fin del rango (`yyyy-MM-dd`). Debe ser posterior a `desde` |
+| `cantidad` | `Integer` | Unidades mínimas disponibles en el rango (default `1`) |
 | `pagina` | `int` | Número de página (base 0) |
 | `tamanio` | `int` | Tamaño de página (default 10) |
 
